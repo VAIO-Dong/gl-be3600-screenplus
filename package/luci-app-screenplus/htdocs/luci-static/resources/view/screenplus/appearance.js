@@ -61,7 +61,16 @@ function convertImage(file) {
 }
 
 return view.extend({
+	setBackgroundModeControl: function(mode) {
+		var control = document.querySelector('[id$=".appearance.background_mode"]');
+		if (control) {
+			control.value = mode;
+			control.dispatchEvent(new Event('change', { bubbles: true }));
+		}
+	},
+
 	handleBackgroundFile: function(page, event) {
+		var self = this;
 		var input = event.currentTarget;
 		var file = input.files && input.files[0];
 		if (!file)
@@ -82,8 +91,9 @@ return view.extend({
 		}).then(function(result) {
 			if (!result || result.code !== 0)
 				throw new Error(result && result.stderr || _('Background installation failed.'));
+			self.setBackgroundModeControl(page === 'global' ? 'global' : 'page');
 			ui.addNotification(null, E('p', {},
-				_('Background installed. Select “Use uploaded image” on the Pages tab and save.')), 'info');
+				_('Background installed and applied immediately.')), 'info');
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
 		}).finally(function() {
@@ -93,6 +103,7 @@ return view.extend({
 	},
 
 	handleBackgroundRemove: function(page, event) {
+		var self = this;
 		var button = event.currentTarget;
 		button.disabled = true;
 		return fs.exec(BACKGROUND_HELPER, [ 'remove', page ]).then(function(result) {
@@ -101,6 +112,8 @@ return view.extend({
 			var preview = document.getElementById('screenplus-preview-' + page);
 			if (preview)
 				preview.removeAttribute('src');
+			if (page === 'global')
+				self.setBackgroundModeControl('page');
 			ui.addNotification(null, E('p', {}, _('Uploaded background removed.')), 'info');
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
@@ -189,15 +202,23 @@ return view.extend({
 		option.rmempty = false;
 		option.description = _('Percentage used when a custom background image is selected.');
 
+		option = section.option(form.ListValue, 'background_mode', _('Background image mode'));
+		option.value('page', _('Use a separate background for each page'));
+		option.value('global', _('Use one background for all pages'));
+		option.default = 'page';
+		option.rmempty = false;
+		option.description = _('Uploading a global or page image automatically selects the matching mode and applies it immediately.');
+
 		return map.render().then(L.bind(function(mapNode) {
 			return E([], [
 				mapNode,
 				E('div', { 'class': 'cbi-map' }, [
 					E('h2', {}, [ _('Custom backgrounds') ]),
 					E('div', { 'class': 'cbi-map-descr' }, [
-						_('Images are cropped in the browser and stored as a fixed 284 × 76 RGB565 asset. No arbitrary server path is accepted.')
+						_('Images are cropped to 284 × 76 in the browser. Uploading an image immediately applies it; no second selection is required.')
 					]),
 					E('div', { 'class': 'cbi-section' }, [
+						this.renderUploader('global', _('Global background (all pages)')),
 						this.renderUploader('home', _('Home / clock')),
 						this.renderUploader('status', _('Device status')),
 						this.renderUploader('traffic', _('Network traffic')),

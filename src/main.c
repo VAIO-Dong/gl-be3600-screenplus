@@ -86,7 +86,7 @@ static lv_obj_t *wifi_ssid_labels[2];
 static lv_obj_t *wifi_password_labels[2];
 static lv_obj_t *network_lan_label;
 static lv_obj_t *network_uplink_labels[4];
-static lv_obj_t *network_wan_label;
+static lv_obj_t *network_wan_value;
 static lv_obj_t *openclash_state_label;
 static lv_obj_t *openclash_download_label;
 static lv_obj_t *openclash_upload_label;
@@ -212,9 +212,14 @@ static lv_obj_t *create_divider(lv_obj_t *parent, int x, int y, int width, int h
 static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page)
 {
 	char expected_name[32];
-	snprintf(expected_name, sizeof(expected_name), "%s.rgb565", screenplus_page_name(page));
-	if (strcmp(app_config.pages[page].background, expected_name) != 0)
-		return;
+	if (app_config.global_background)
+		strcpy(expected_name, "global.rgb565");
+	else {
+		snprintf(expected_name, sizeof(expected_name), "%s.rgb565",
+			screenplus_page_name(page));
+		if (strcmp(app_config.pages[page].background, expected_name) != 0)
+			return;
+	}
 	char path[192];
 	snprintf(path, sizeof(path), "/usr/share/screenplus/backgrounds/%s", expected_name);
 	FILE *file = fopen(path, "rb");
@@ -736,10 +741,12 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 		++slot;
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
-		network_wan_label = create_label(screen, "WAN --", 8, 55,
+		create_label(screen, "WAN", 8, 55, &lv_font_montserrat_14,
+			app_config.accent_colour);
+		network_wan_value = create_label(screen, "--", 55, 55,
 			&lv_font_montserrat_14, app_config.primary_colour);
-		lv_obj_set_width(network_wan_label, 268);
-		lv_label_set_long_mode(network_wan_label, LV_LABEL_LONG_DOT);
+		lv_obj_set_width(network_wan_value, 221);
+		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
 	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
@@ -753,10 +760,12 @@ static void update_wifi_band_display(unsigned int band, const struct wifi_info *
 	if (!wifi->enabled) {
 		set_label_text_if_changed(wifi_ssid_labels[band], "OFF");
 		set_label_text_if_changed(wifi_password_labels[band], "");
+		lv_obj_set_y(wifi_ssid_labels[band], 10);
 		lv_obj_set_style_text_color(wifi_ssid_labels[band],
 			colour(app_config.secondary_colour), 0);
 		return;
 	}
+	lv_obj_set_y(wifi_ssid_labels[band], 2);
 	set_label_text_if_changed(wifi_ssid_labels[band], wifi->ssid[0] ? wifi->ssid : "--");
 	lv_obj_set_style_text_color(wifi_ssid_labels[band],
 		colour(app_config.primary_colour), 0);
@@ -1023,16 +1032,16 @@ static void apply_system_snapshot(lv_timer_t *timer)
 			active_title = titles[index];
 		}
 	}
-	if (network_wan_label) {
+	if (network_wan_value) {
 		if (active && (active->state == SCREENPLUS_STATE_ACTIVE ||
 		    active->state == SCREENPLUS_STATE_CONNECTED))
-			snprintf(text, sizeof(text), "WAN %s  %s", active_title,
+			snprintf(text, sizeof(text), "%s  %s", active_title,
 				active->ipv4[0] ? active->ipv4 : "UP");
 		else if (active && active->state == SCREENPLUS_STATE_CONNECTING)
-			snprintf(text, sizeof(text), "WAN %s  WAIT", active_title);
+			snprintf(text, sizeof(text), "%s  WAIT", active_title);
 		else
-			strcpy(text, "WAN OFF  NO UPLINK");
-		set_label_text_if_changed(network_wan_label, text);
+			strcpy(text, "OFF  NO UPLINK");
+		set_label_text_if_changed(network_wan_value, text);
 	}
 
 	const struct wifi_info *wifi_bands[2] = { &snapshot.wifi_2g, &snapshot.wifi_5g };

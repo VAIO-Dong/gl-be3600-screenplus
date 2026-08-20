@@ -52,6 +52,7 @@ struct screenplus_config {
 	uint32_t border_colour;
 	uint32_t warning_colour;
 	uint32_t error_colour;
+	bool global_background;
 	bool slide_animation;
 	unsigned int overlay_opacity;
 	char timezone_rule[64];

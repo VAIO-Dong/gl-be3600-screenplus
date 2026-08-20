@@ -218,6 +218,8 @@ static void apply_appearance_option(struct screenplus_config *config,
 		config->error_colour = parse_colour(value, config->error_colour);
 	else if (strcmp(key, "overlay_opacity") == 0)
 		config->overlay_opacity = parse_unsigned(value, 35, 0, 100);
+	else if (strcmp(key, "background_mode") == 0)
+		config->global_background = strcmp(value, "global") == 0;
 }
 
 int screenplus_config_load(struct screenplus_config *config, const char *path)
@@ -253,6 +255,12 @@ int screenplus_config_load(struct screenplus_config *config, const char *path)
 			apply_main_option(config, key, value);
 		else if (strcmp(section_type, "appearance") == 0 && strcmp(directive, "option") == 0)
 			apply_appearance_option(config, key, value);
+		else if (strcmp(section_type, "page_order") == 0 && strcmp(directive, "option") == 0) {
+			int page_index = page_from_name(key);
+			if (page_index >= 0)
+				config->pages[page_index].order = (int)parse_unsigned(value,
+					(unsigned int)config->pages[page_index].order, 0, 999);
+		}
 		else if (strcmp(section_type, "page") == 0) {
 			int page_index = page_from_name(section_name);
 			if (page_index < 0)

@@ -6,7 +6,7 @@ umask 077
 action="${1:-}"
 page="${2:-}"
 case "$page" in
-	home|status|traffic|network|wifi|openclash) ;;
+	global|home|status|traffic|network|wifi|openclash) ;;
 	*) echo "invalid page" >&2; exit 2 ;;
 esac
 
@@ -19,6 +19,11 @@ cleanup() {
 	rm -f "$temporary"
 }
 trap cleanup EXIT INT TERM
+
+reload_screenplus() {
+	[ "$(uci -q get screenplus.main.enabled)" = "1" ] || return 0
+	/etc/init.d/screenplus reload 2>/dev/null || true
+}
 
 case "$action" in
 	install)
@@ -44,9 +49,25 @@ case "$action" in
 		chmod 0644 "$temporary"
 		mv -f "$temporary" "$destination"
 		rm -f "$input"
+		if [ "$page" = "global" ]; then
+			uci set screenplus.appearance.background_mode=global
+		else
+			uci set "screenplus.$page.background=$page.rgb565"
+			uci set screenplus.appearance.background_mode=page
+		fi
+		uci commit screenplus
+		reload_screenplus
 		;;
 	remove)
 		rm -f "$destination" "$input"
+		if [ "$page" = "global" ]; then
+			[ "$(uci -q get screenplus.appearance.background_mode)" != "global" ] || \
+				uci set screenplus.appearance.background_mode=page
+		else
+			uci -q delete "screenplus.$page.background"
+		fi
+		uci commit screenplus
+		reload_screenplus
 		;;
 	*)
 		echo "usage: screenplus-background install|remove PAGE" >&2

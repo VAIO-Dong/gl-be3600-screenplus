@@ -10,16 +10,6 @@ function addPage(map, name, title, fields) {
 	var option = section.option(form.Flag, 'enabled', _('Show this page'));
 	option.default = option.enabled;
 
-	option = section.option(form.Value, 'order', _('Page order'));
-	option.datatype = 'range(0,999)';
-	option.rmempty = false;
-
-	option = section.option(form.ListValue, 'background', _('Background image'));
-	option.value('', _('Use theme colour'));
-	option.value(name + '.rgb565', _('Use uploaded image'));
-	option.default = '';
-	option.description = _('Upload or replace this image on the Appearance tab.');
-
 	option = section.option(form.MultiValue, 'field', _('Visible fields'));
 	option.widget = 'checkbox';
 	option.rmempty = false;
@@ -28,10 +18,33 @@ function addPage(map, name, title, fields) {
 	});
 }
 
+function addPageOrder(map) {
+	var section = map.section(form.NamedSection, 'page_order', 'page_order', _('Page order'));
+	section.anonymous = true;
+	section.addremove = false;
+	section.description = _('Lower numbers appear first. Page visibility and content are configured below.');
+
+	[
+		[ 'home', _('Home / clock'), '10' ],
+		[ 'status', _('Device status'), '20' ],
+		[ 'traffic', _('Network traffic'), '25' ],
+		[ 'network', _('Network'), '30' ],
+		[ 'wifi', _('Wi-Fi credentials'), '40' ],
+		[ 'openclash', _('OpenClash'), '50' ]
+	].forEach(function(page) {
+		var option = section.option(form.Value, page[0], page[1]);
+		option.datatype = 'range(0,999)';
+		option.default = page[2];
+		option.rmempty = false;
+	});
+}
+
 return view.extend({
 	render: function() {
 		var map = new form.Map('screenplus', _('Screen pages'),
-			_('Enable pages, change their swipe order, and choose the data shown on each page.'));
+			_('Set the swipe order first, then enable pages and choose the data shown on each page.'));
+
+		addPageOrder(map);
 
 		addPage(map, 'home', _('Home / clock'), [
 			[ 'time', _('Time') ],
