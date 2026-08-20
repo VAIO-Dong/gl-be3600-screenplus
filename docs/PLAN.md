@@ -15,7 +15,9 @@ The screen model has six independently enabled and ordered pages:
    30-point/30-second history graph; acceleration status remains available in
    diagnostics.
 4. Network: bridge-side LAN address, Ethernet/Wi-Fi repeater/USB
-   tethering/cellular WAN states and the active WAN address.
+   tethering/cellular WAN states and the active WAN address. Ethernet state is
+   carrier-aware: no cable inherits secondary text, link without uplink is
+   yellow, and the healthy active uplink is green.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
 6. OpenClash: a three-row grid with equal-width state, live-rate, connection

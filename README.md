@@ -11,7 +11,9 @@ behaviour through LuCI.
 - System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
 - Traffic: icon-led upload above download, stable sampled rates and a 30-second graph.
 - Network: bridge-side LAN address, all four WAN sources (Ethernet, Wi-Fi
-  repeater, USB tethering and cellular), plus the active WAN address.
+  repeater, USB tethering and cellular), plus the active WAN address. Ethernet
+  is secondary-coloured with no carrier, yellow with link but no uplink and
+  green only as the healthy active uplink.
 - Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
   shown as off.
 - OpenClash: a three-row equal-column grid for state, live upload/download

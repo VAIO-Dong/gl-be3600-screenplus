@@ -171,11 +171,43 @@ static void sample_interface(const char *name, const char *active_interface,
 	}
 }
 
+static int ethernet_carrier(const struct uplink_info *uplink)
+{
+	char device[SCREENPLUS_TEXT_SHORT] = {0};
+	char key[96];
+	char path[160];
+	char value[16];
+	if (uplink->logical_interface[0]) {
+		snprintf(key, sizeof(key), "network.%s.device", uplink->logical_interface);
+		uci_get(key, device, sizeof(device));
+	}
+	if (!device[0] && uplink->device[0])
+		strncpy(device, uplink->device, sizeof(device) - 1);
+	if (!device[0])
+		return -1;
+	snprintf(path, sizeof(path), "/sys/class/net/%s/carrier", device);
+	if (read_file_line(path, value, sizeof(value)) != 0)
+		return -1;
+	return strcmp(value, "1") == 0 ? 1 : 0;
+}
+
 static void sample_ethernet(const char *active_interface, struct uplink_info *uplink)
 {
 	sample_interface("wan", active_interface, uplink);
 	if (uplink->state == SCREENPLUS_STATE_UNAVAILABLE)
 		sample_interface("secondwan", active_interface, uplink);
+	int carrier = ethernet_carrier(uplink);
+	if (carrier == 0) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		uplink->ipv4[0] = '\0';
+		uplink->gateway[0] = '\0';
+		uplink->dns[0] = '\0';
+		strcpy(uplink->detail, "NO CABLE");
+	} else if (carrier == 1 && uplink->state != SCREENPLUS_STATE_ACTIVE &&
+		   uplink->state != SCREENPLUS_STATE_CONNECTED) {
+		uplink->state = SCREENPLUS_STATE_CONNECTING;
+		strcpy(uplink->detail, "NO INTERNET");
+	}
 }
 
 static void sample_repeater(const char *active_interface, struct uplink_info *uplink)
