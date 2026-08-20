@@ -743,8 +743,8 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
 		create_label(screen, "WAN", 8, 4, ui_label_font(),
 			app_config.accent_colour);
-		network_wan_value = create_label(screen, "--", 55, 1,
-			ui_value_font(), app_config.primary_colour);
+		network_wan_value = create_label(screen, "--", 55, 4,
+			ui_label_font(), app_config.primary_colour);
 		lv_obj_set_width(network_wan_value, 221);
 		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
 	}
@@ -771,8 +771,8 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
 		create_label(screen, "LAN", 8, 55, ui_label_font(),
 			app_config.accent_colour);
-		network_lan_label = create_label(screen, "--", 55, 52,
-			ui_value_font(), app_config.primary_colour);
+		network_lan_label = create_label(screen, "--", 55, 55,
+			ui_label_font(), app_config.primary_colour);
 		lv_obj_set_width(network_lan_label, 221);
 		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
 	}
@@ -788,12 +788,12 @@ static void update_wifi_band_display(unsigned int band, const struct wifi_info *
 	if (!wifi->enabled) {
 		set_label_text_if_changed(wifi_ssid_labels[band], "OFF");
 		set_label_text_if_changed(wifi_password_labels[band], "");
-		lv_obj_set_y(wifi_ssid_labels[band], 7);
+		lv_obj_set_y(wifi_ssid_labels[band], 10);
 		lv_obj_set_style_text_color(wifi_ssid_labels[band],
 			colour(app_config.secondary_colour), 0);
 		return;
 	}
-	lv_obj_set_y(wifi_ssid_labels[band], 0);
+	lv_obj_set_y(wifi_ssid_labels[band], 2);
 	set_label_text_if_changed(wifi_ssid_labels[band], wifi->ssid[0] ? wifi->ssid : "--");
 	lv_obj_set_style_text_color(wifi_ssid_labels[band],
 		colour(app_config.primary_colour), 0);
@@ -942,8 +942,8 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 		LV_OBJ_FLAG_GESTURE_BUBBLE);
 	wifi_band_titles[band] = create_label(row, title, 8, 10,
 		ui_label_font(), app_config.accent_colour);
-	wifi_ssid_labels[band] = create_label(row, "--", 55, 0,
-		ui_value_font(), app_config.primary_colour);
+	wifi_ssid_labels[band] = create_label(row, "--", 55, 2,
+		ui_label_font(), app_config.primary_colour);
 	wifi_password_labels[band] = create_label(row, "KEY ********", 55, 20,
 		ui_detail_font(), app_config.primary_colour);
 	lv_obj_set_width(wifi_band_titles[band], 42);
@@ -980,13 +980,13 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 	openclash_state_label = create_label(screen, "N/A", 116, 3,
 		small_ui_font(), app_config.primary_colour);
 	create_divider(screen, 8, 24, 268, 2);
-	openclash_download_label = create_label(screen, "DOWN --", 8, 27,
-		ui_value_font(), app_config.primary_colour);
-	openclash_upload_label = create_label(screen, "UP --", 146, 27,
-		ui_value_font(), app_config.primary_colour);
-	openclash_connections_label = create_label(screen, "CONN --", 8, 53,
+	openclash_download_label = create_label(screen, "DOWN --", 8, 29,
+		ui_label_font(), app_config.primary_colour);
+	openclash_upload_label = create_label(screen, "UP --", 146, 29,
+		ui_label_font(), app_config.primary_colour);
+	openclash_connections_label = create_label(screen, "CONN --", 8, 51,
 		ui_detail_font(), app_config.secondary_colour);
-	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 53,
+	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 51,
 		ui_detail_font(), app_config.secondary_colour);
 	lv_obj_set_width(openclash_download_label, 128);
 	lv_obj_set_width(openclash_upload_label, 130);

@@ -72,9 +72,10 @@ status for both the compact network page and diagnostics.
 - Default text colours are white or near-white; muted low-contrast gray is not
   used for operational data.
 - Dividers use a deep neutral gray and are at least 2 physical pixels wide.
-- Non-home pages share a 14 px label, 18 px primary-value and 14 px detail
-  hierarchy. The smallest active UI font remains 14 px. Dense network data uses
-  full-width rows rather than narrow cards so complete IP addresses remain legible.
+- Compact pages use a 14 px baseline for labels, values and details. Only a few
+  high-priority readings, such as system metrics and live traffic rates, use
+  18 px. Dense network data uses full-width rows rather than narrow cards so
+  complete IP addresses remain legible.
 - Custom backgrounds receive a configurable dark overlay.
 
 ## Packaging
