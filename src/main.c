@@ -670,16 +670,16 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
 	create_divider(screen, 124, 8, 2, 60);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		create_label(screen, "UP", 8, 2, ui_label_font(),
-			app_config.accent_colour);
-		traffic_upload_label = create_label(screen, "0B/s", 8, 19,
+		create_label(screen, LV_SYMBOL_UPLOAD, 8, 8, ui_value_font(),
+			app_config.secondary_colour);
+		traffic_upload_label = create_label(screen, "0B/s", 30, 8,
 			ui_value_font(), app_config.primary_colour);
-		create_label(screen, "DOWN", 8, 39, ui_label_font(),
+		create_label(screen, LV_SYMBOL_DOWNLOAD, 8, 46, ui_value_font(),
 			app_config.accent_colour);
-		traffic_download_label = create_label(screen, "0B/s", 8, 55,
+		traffic_download_label = create_label(screen, "0B/s", 30, 46,
 			ui_value_font(), app_config.primary_colour);
-		lv_obj_set_width(traffic_download_label, 110);
-		lv_obj_set_width(traffic_upload_label, 110);
+		lv_obj_set_width(traffic_download_label, 88);
+		lv_obj_set_width(traffic_upload_label, 88);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
 		traffic_chart = lv_chart_create(screen);
@@ -727,7 +727,7 @@ static unsigned int network_state_colour(enum screenplus_state state)
 	case SCREENPLUS_STATE_CONNECTING:
 	case SCREENPLUS_STATE_CONNECTED:
 	case SCREENPLUS_STATE_ERROR: return app_config.warning_colour;
-	default: return app_config.absent_colour;
+	default: return app_config.secondary_colour;
 	}
 }
 
@@ -980,13 +980,14 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 	openclash_state_label = create_label(screen, "N/A", 116, 3,
 		small_ui_font(), app_config.primary_colour);
 	create_divider(screen, 8, 24, 268, 2);
-	openclash_download_label = create_label(screen, "DOWN --", 8, 29,
+	openclash_download_label = create_label(screen, LV_SYMBOL_DOWNLOAD " --", 8, 29,
 		ui_label_font(), app_config.primary_colour);
-	openclash_upload_label = create_label(screen, "UP --", 146, 29,
+	openclash_upload_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 146, 29,
 		ui_label_font(), app_config.primary_colour);
 	openclash_connections_label = create_label(screen, "CONN --", 8, 51,
 		ui_detail_font(), app_config.secondary_colour);
-	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 51,
+	openclash_totals_label = create_label(screen,
+		LV_SYMBOL_DOWNLOAD " --  " LV_SYMBOL_UPLOAD " --", 84, 51,
 		ui_detail_font(), app_config.secondary_colour);
 	lv_obj_set_width(openclash_download_label, 128);
 	lv_obj_set_width(openclash_upload_label, 130);
@@ -1100,19 +1101,23 @@ static void apply_system_snapshot(lv_timer_t *timer)
 				download_total, sizeof(download_total));
 			format_total_bytes(snapshot.openclash.upload_total_bytes,
 				upload_total, sizeof(upload_total));
-			snprintf(text, sizeof(text), "DOWN %s/s", download);
+			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s/s", download);
 			set_label_text_if_changed(openclash_download_label, text);
-			snprintf(text, sizeof(text), "UP %s/s", upload);
+			snprintf(text, sizeof(text), LV_SYMBOL_UPLOAD " %s/s", upload);
 			set_label_text_if_changed(openclash_upload_label, text);
 			snprintf(text, sizeof(text), "CONN %u", snapshot.openclash.connection_count);
 			set_label_text_if_changed(openclash_connections_label, text);
-			snprintf(text, sizeof(text), "DOWN %s  UP %s", download_total, upload_total);
+			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s  "
+				LV_SYMBOL_UPLOAD " %s", download_total, upload_total);
 			set_label_text_if_changed(openclash_totals_label, text);
 		} else {
-			set_label_text_if_changed(openclash_download_label, "DOWN --");
-			set_label_text_if_changed(openclash_upload_label, "UP --");
+			set_label_text_if_changed(openclash_download_label,
+				LV_SYMBOL_DOWNLOAD " --");
+			set_label_text_if_changed(openclash_upload_label,
+				LV_SYMBOL_UPLOAD " --");
 			set_label_text_if_changed(openclash_connections_label, "CONN --");
-			set_label_text_if_changed(openclash_totals_label, "DOWN --  UP --");
+			set_label_text_if_changed(openclash_totals_label,
+				LV_SYMBOL_DOWNLOAD " --  " LV_SYMBOL_UPLOAD " --");
 		}
 	}
 }

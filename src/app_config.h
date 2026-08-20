@@ -51,7 +51,6 @@ struct screenplus_config {
 	uint32_t border_colour;
 	uint32_t warning_colour;
 	uint32_t error_colour;
-	uint32_t absent_colour;
 	uint32_t standby_colour;
 	bool global_background;
 	bool slide_animation;

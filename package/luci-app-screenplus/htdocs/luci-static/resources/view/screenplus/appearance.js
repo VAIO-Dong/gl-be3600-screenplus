@@ -201,7 +201,7 @@ return view.extend({
 
 	render: function() {
 		var map = new form.Map('screenplus', _('Appearance'),
-			_('Text and layout colours are followed by connection-state colours: grey means missing, blue means available but disabled, yellow means enabled without internet, green means healthy, and red means a fault. Changes apply when the service reloads.'));
+			_('Missing connections use the secondary text colour. Blue means available but disabled, yellow means enabled without internet, green means healthy, and red means a fault. Changes apply when the service reloads.'));
 		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Theme'));
 		section.anonymous = true;
 		section.addremove = false;
@@ -231,11 +231,6 @@ return view.extend({
 
 		option = section.taboption('states', form.Value, 'accent', _('Healthy / accent colour'));
 		option.default = '#37f59a';
-		option.rmempty = false;
-		option.validate = validateColour;
-
-		option = section.taboption('states', form.Value, 'absent', _('Missing connection colour'));
-		option.default = '#8a939f';
 		option.rmempty = false;
 		option.validate = validateColour;
 

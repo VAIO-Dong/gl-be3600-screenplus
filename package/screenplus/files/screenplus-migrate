@@ -2,7 +2,7 @@
 
 # Idempotent migration through the simplified colour and preview schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "8" ] && exit 0
+[ "$schema_version" = "9" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -32,8 +32,6 @@ bind_existing_backgrounds() {
 }
 
 migrate_connection_colours() {
-	uci set screenplus.appearance.absent="$(get_or_default \
-		screenplus.appearance.absent '#8a939f')"
 	uci set screenplus.appearance.standby="$(get_or_default \
 		screenplus.appearance.standby '#4b9fff')"
 }
@@ -47,11 +45,16 @@ migrate_divider_colour() {
 
 finish_migration() {
 	uci -q delete screenplus.appearance.surface
+	uci -q delete screenplus.appearance.absent
 	migrate_divider_colour
-	uci set screenplus.main.schema_version=8
+	uci set screenplus.main.schema_version=9
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "8" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "7" ]; then
 	finish_migration

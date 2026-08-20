@@ -66,7 +66,6 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->border_colour = 0x3b424a;
 	config->warning_colour = 0xffdc55;
 	config->error_colour = 0xff5c70;
-	config->absent_colour = 0x8a939f;
 	config->standby_colour = 0x4b9fff;
 	config->overlay_opacity = 35;
 	set_default_page(&config->pages[SCREENPLUS_PAGE_HOME], 10,
@@ -215,8 +214,6 @@ static void apply_appearance_option(struct screenplus_config *config,
 		config->warning_colour = parse_colour(value, config->warning_colour);
 	else if (strcmp(key, "error") == 0)
 		config->error_colour = parse_colour(value, config->error_colour);
-	else if (strcmp(key, "absent") == 0)
-		config->absent_colour = parse_colour(value, config->absent_colour);
 	else if (strcmp(key, "standby") == 0)
 		config->standby_colour = parse_colour(value, config->standby_colour);
 	else if (strcmp(key, "overlay_opacity") == 0)
