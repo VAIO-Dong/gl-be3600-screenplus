@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -eu
+
+case "${1:-}" in
+	status)
+		service_status="$(/etc/init.d/screenplus status 2>/dev/null || true)"
+		boot_status=disabled
+		if /etc/init.d/screenplus enabled 2>/dev/null; then
+			boot_status=enabled
+		fi
+		printf 'service=%s\nboot=%s\nframebuffer=%s\ntouch=%s\n' \
+			"${service_status:-stopped}" "$boot_status" \
+			"$([ -c /dev/fb0 ] && echo available || echo missing)" \
+			"$([ -c /dev/input/event0 ] && echo available || echo missing)"
+		;;
+	metrics)
+		exec /usr/sbin/screenplus --metrics-once
+		;;
+	system)
+		exec /usr/sbin/screenplus --system-info-once
+		;;
+	logs)
+		logread -e screenplus | tail -n 50
+		;;
+	*)
+		echo "usage: screenplus-diagnostics status|metrics|system|logs" >&2
+		exit 2
+		;;
+esac

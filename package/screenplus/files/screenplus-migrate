@@ -1,0 +1,78 @@
+#!/bin/sh
+
+# One-time migration from the original five-page prototype to schema v2.
+[ "$(uci -q get screenplus.main.schema_version)" = "2" ] && exit 0
+
+get_or_default() {
+	value="$(uci -q get "$1")"
+	[ -n "$value" ] && printf '%s' "$value" || printf '%s' "$2"
+}
+
+primary="$(uci -q get screenplus.appearance.primary)"
+[ -n "$primary" ] || primary="$(get_or_default screenplus.appearance.foreground '#ffffff')"
+[ "$primary" = "#f4f7fb" ] && primary='#ffffff'
+accent="$(get_or_default screenplus.appearance.accent '#37f59a')"
+[ "$accent" = "#41d695" ] && accent='#37f59a'
+background="$(get_or_default screenplus.appearance.background '#030912')"
+[ "$background" = "#08111f" ] && background='#030912'
+uci set screenplus.appearance.primary="$primary"
+uci set screenplus.appearance.secondary="$(get_or_default screenplus.appearance.secondary '#dcecff')"
+uci set screenplus.appearance.accent="$accent"
+uci set screenplus.appearance.background="$background"
+uci set screenplus.appearance.surface="$(get_or_default screenplus.appearance.surface '#0a1828')"
+uci set screenplus.appearance.border="$(get_or_default screenplus.appearance.border '#4f87b8')"
+uci set screenplus.appearance.warning="$(get_or_default screenplus.appearance.warning '#ffdc55')"
+uci set screenplus.appearance.error="$(get_or_default screenplus.appearance.error '#ff5c70')"
+uci -q delete screenplus.appearance.foreground
+uci set screenplus.main.page_transition="$(get_or_default screenplus.main.page_transition none)"
+
+uci set screenplus.status=page
+uci -q delete screenplus.status.field
+uci add_list screenplus.status.field=cpu
+uci add_list screenplus.status.field=memory
+uci add_list screenplus.status.field=storage
+
+network_enabled="$(get_or_default screenplus.internet.enabled 1)"
+network_order="$(get_or_default screenplus.internet.order 30)"
+network_background="$(uci -q get screenplus.internet.background)"
+uci set screenplus.network=page
+uci set screenplus.network.enabled="$network_enabled"
+uci set screenplus.network.order="$network_order"
+uci -q delete screenplus.network.field
+uci add_list screenplus.network.field=port_1
+uci add_list screenplus.network.field=port_2
+uci add_list screenplus.network.field=wifi
+if [ "$network_background" = "internet.rgb565" ] &&
+   [ -f /usr/share/screenplus/backgrounds/internet.rgb565 ]; then
+	mv -f /usr/share/screenplus/backgrounds/internet.rgb565 \
+		/usr/share/screenplus/backgrounds/network.rgb565
+	uci set screenplus.network.background=network.rgb565
+fi
+
+uci set screenplus.wifi=page
+uci -q delete screenplus.wifi.field
+uci add_list screenplus.wifi.field=ssid
+uci add_list screenplus.wifi.field=password
+
+openclash_enabled="$(get_or_default screenplus.ports.enabled 1)"
+openclash_order="$(get_or_default screenplus.ports.order 50)"
+openclash_background="$(uci -q get screenplus.ports.background)"
+uci set screenplus.openclash=page
+uci set screenplus.openclash.enabled="$openclash_enabled"
+uci set screenplus.openclash.order="$openclash_order"
+uci -q delete screenplus.openclash.field
+uci add_list screenplus.openclash.field=rates
+uci add_list screenplus.openclash.field=connections
+uci add_list screenplus.openclash.field=totals
+if [ "$openclash_background" = "ports.rgb565" ] &&
+   [ -f /usr/share/screenplus/backgrounds/ports.rgb565 ]; then
+	mv -f /usr/share/screenplus/backgrounds/ports.rgb565 \
+		/usr/share/screenplus/backgrounds/openclash.rgb565
+	uci set screenplus.openclash.background=openclash.rgb565
+fi
+
+uci -q delete screenplus.internet
+uci -q delete screenplus.ports
+uci set screenplus.main.schema_version=2
+uci commit screenplus
+exit 0

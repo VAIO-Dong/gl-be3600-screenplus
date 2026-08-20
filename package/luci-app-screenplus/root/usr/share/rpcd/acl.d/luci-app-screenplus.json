@@ -1,0 +1,30 @@
+{
+	"luci-app-screenplus": {
+		"description": "Grant access to ScreenPlus configuration",
+		"read": {
+			"uci": [ "screenplus" ],
+			"file": {
+				"/usr/libexec/screenplus-diagnostics": [ "exec" ],
+				"/etc/init.d/screenplus": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "screenplus" ],
+			"file": {
+				"/tmp/screenplus-background-home.b64": [ "write", "remove" ],
+				"/tmp/screenplus-background-status.b64": [ "write", "remove" ],
+				"/tmp/screenplus-background-network.b64": [ "write", "remove" ],
+				"/tmp/screenplus-background-wifi.b64": [ "write", "remove" ],
+				"/tmp/screenplus-background-openclash.b64": [ "write", "remove" ],
+				"/usr/libexec/screenplus-background": [ "exec" ],
+				"/etc/init.d/screenplus": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "write", "remove", "exec" ]
+			}
+		}
+	}
+}

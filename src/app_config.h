@@ -1,0 +1,65 @@
+#ifndef SCREENPLUS_APP_CONFIG_H
+#define SCREENPLUS_APP_CONFIG_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define SCREENPLUS_MAX_FIELDS 16
+#define SCREENPLUS_FIELD_LENGTH 24
+
+enum screenplus_page_id {
+	SCREENPLUS_PAGE_HOME,
+	SCREENPLUS_PAGE_STATUS,
+	SCREENPLUS_PAGE_NETWORK,
+	SCREENPLUS_PAGE_WIFI,
+	SCREENPLUS_PAGE_OPENCLASH,
+	SCREENPLUS_PAGE_COUNT,
+};
+
+enum screenplus_password_mode {
+	SCREENPLUS_PASSWORD_HIDDEN,
+	SCREENPLUS_PASSWORD_TAP,
+	SCREENPLUS_PASSWORD_VISIBLE,
+	SCREENPLUS_PASSWORD_QR,
+};
+
+struct screenplus_page_config {
+	bool enabled;
+	int order;
+	char background[128];
+	char fields[SCREENPLUS_MAX_FIELDS][SCREENPLUS_FIELD_LENGTH];
+	size_t field_count;
+};
+
+struct screenplus_config {
+	bool enabled;
+	bool chinese;
+	int brightness;
+	int rotation;
+	bool always_on;
+	unsigned int idle_timeout_seconds;
+	bool swipe_loop;
+	bool auto_carousel;
+	unsigned int carousel_interval_seconds;
+	enum screenplus_password_mode password_mode;
+	uint32_t primary_colour;
+	uint32_t secondary_colour;
+	uint32_t accent_colour;
+	uint32_t background_colour;
+	uint32_t surface_colour;
+	uint32_t border_colour;
+	uint32_t warning_colour;
+	uint32_t error_colour;
+	bool slide_animation;
+	unsigned int overlay_opacity;
+	struct screenplus_page_config pages[SCREENPLUS_PAGE_COUNT];
+};
+
+void screenplus_config_defaults(struct screenplus_config *config);
+int screenplus_config_load(struct screenplus_config *config, const char *path);
+bool screenplus_page_has_field(const struct screenplus_config *config,
+			       enum screenplus_page_id page, const char *field);
+const char *screenplus_page_name(enum screenplus_page_id page);
+
+#endif

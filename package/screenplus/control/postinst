@@ -1,0 +1,10 @@
+#!/bin/sh
+
+[ -n "$IPKG_INSTROOT" ] && exit 0
+
+/etc/init.d/gl_screen stop 2>/dev/null
+/etc/init.d/gl_screen disable 2>/dev/null
+/usr/libexec/screenplus-migrate 2>/dev/null
+/etc/init.d/screenplus enable
+/etc/init.d/screenplus start
+exit 0

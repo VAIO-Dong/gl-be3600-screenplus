@@ -1,0 +1,55 @@
+#!/bin/sh
+
+set -eu
+umask 077
+
+action="${1:-}"
+page="${2:-}"
+case "$page" in
+	home|status|network|wifi|openclash) ;;
+	*) echo "invalid page" >&2; exit 2 ;;
+esac
+
+directory=/usr/share/screenplus/backgrounds
+destination="$directory/$page.rgb565"
+input="/tmp/screenplus-background-$page.b64"
+temporary="$directory/.$page.rgb565.$$"
+
+cleanup() {
+	rm -f "$temporary"
+}
+trap cleanup EXIT INT TERM
+
+case "$action" in
+	install)
+		[ -f "$input" ] && [ ! -L "$input" ] || {
+			echo "upload is missing or unsafe" >&2
+			exit 1
+		}
+		encoded_size="$(wc -c < "$input")"
+		[ "$encoded_size" -le 60000 ] || {
+			echo "upload is too large" >&2
+			exit 1
+		}
+		mkdir -p "$directory"
+		base64 -d "$input" > "$temporary" || {
+			echo "invalid base64 data" >&2
+			exit 1
+		}
+		decoded_size="$(wc -c < "$temporary")"
+		[ "$decoded_size" -eq 43168 ] || {
+			echo "background must decode to exactly 43168 bytes" >&2
+			exit 1
+		}
+		chmod 0644 "$temporary"
+		mv -f "$temporary" "$destination"
+		rm -f "$input"
+		;;
+	remove)
+		rm -f "$destination" "$input"
+		;;
+	*)
+		echo "usage: screenplus-background install|remove PAGE" >&2
+		exit 2
+		;;
+esac
