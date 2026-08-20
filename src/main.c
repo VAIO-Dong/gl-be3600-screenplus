@@ -84,12 +84,9 @@ static lv_obj_t *wifi_band_rows[2];
 static lv_obj_t *wifi_band_titles[2];
 static lv_obj_t *wifi_ssid_labels[2];
 static lv_obj_t *wifi_password_labels[2];
-static lv_obj_t *network_wifi_title;
-static lv_obj_t *network_wifi_state;
-static lv_obj_t *network_wifi_detail;
-static lv_obj_t *port_titles[2];
-static lv_obj_t *port_links[2];
-static lv_obj_t *port_rates[2];
+static lv_obj_t *network_lan_label;
+static lv_obj_t *network_uplink_labels[4];
+static lv_obj_t *network_wan_label;
 static lv_obj_t *openclash_state_label;
 static lv_obj_t *openclash_download_label;
 static lv_obj_t *openclash_upload_label;
@@ -701,39 +698,49 @@ static unsigned int state_colour(enum screenplus_state state)
 	}
 }
 
-static void create_network_row(lv_obj_t *parent, unsigned int slot,
-			       const char *title, lv_obj_t **title_label,
-			       lv_obj_t **value_label, lv_obj_t **detail_label)
-{
-	int y = 4 + (int)slot * 25;
-	*title_label = create_label(parent, title, 8, y, &lv_font_montserrat_14,
-		app_config.accent_colour);
-	*value_label = create_label(parent, "--", 99, y, &lv_font_montserrat_14,
-		app_config.primary_colour);
-	*detail_label = create_label(parent, "--", 161, y, &lv_font_montserrat_14,
-		app_config.secondary_colour);
-	lv_obj_set_size(*title_label, 84, 17);
-	lv_obj_set_size(*value_label, 56, 17);
-	lv_obj_set_size(*detail_label, 115, 17);
-	lv_label_set_long_mode(*title_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(*value_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(*detail_label, LV_LABEL_LONG_DOT);
-}
-
 static lv_obj_t *build_network_screen(lv_obj_t *parent)
 {
+	static const char *const fields[] = {
+		"ethernet", "repeater", "tethering", "cellular"
+	};
+	static const char *const titles[] = { "ETH", "REPEATER", "USB", "CELLULAR" };
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_NETWORK);
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "port_1"))
-		create_network_row(screen, 0, "ETH0", &port_titles[0],
-			&port_links[0], &port_rates[0]);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "port_2"))
-		create_network_row(screen, 1, "ETH1", &port_titles[1],
-			&port_links[1], &port_rates[1]);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wifi"))
-		create_network_row(screen, 2, "WIFI", &network_wifi_title,
-			&network_wifi_state, &network_wifi_detail);
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
+		create_label(screen, "LAN", 8, 4, &lv_font_montserrat_14,
+			app_config.accent_colour);
+		network_lan_label = create_label(screen, "--", 55, 4,
+			&lv_font_montserrat_14, app_config.primary_colour);
+		lv_obj_set_width(network_lan_label, 221);
+		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
+	}
+	unsigned int visible = 0;
+	for (unsigned int index = 0; index < 4; ++index)
+		visible += screenplus_page_has_field(&app_config,
+			SCREENPLUS_PAGE_NETWORK, fields[index]) ? 1U : 0U;
+	unsigned int slot = 0;
+	for (unsigned int index = 0; index < 4; ++index) {
+		if (!screenplus_page_has_field(&app_config,
+		    SCREENPLUS_PAGE_NETWORK, fields[index]))
+			continue;
+		static const int four_column_edges[] = { 8, 52, 145, 196, 276 };
+		int x = visible == 4 ? four_column_edges[slot] :
+			8 + (int)(268U * slot / visible);
+		int next = visible == 4 ? four_column_edges[slot + 1U] :
+			8 + (int)(268U * (slot + 1U) / visible);
+		network_uplink_labels[index] = create_label(screen, titles[index], x, 29,
+			&lv_font_montserrat_14, app_config.secondary_colour);
+		lv_obj_set_width(network_uplink_labels[index], next - x);
+		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
+		++slot;
+	}
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
+		network_wan_label = create_label(screen, "WAN --", 8, 55,
+			&lv_font_montserrat_14, app_config.primary_colour);
+		lv_obj_set_width(network_wan_label, 268);
+		lv_label_set_long_mode(network_wan_label, LV_LABEL_LONG_DOT);
+	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -984,46 +991,48 @@ static void apply_system_snapshot(lv_timer_t *timer)
 	applied_snapshot_generation = generation;
 
 	char text[160];
-	for (unsigned int index = 0; index < 2; ++index) {
-		if (!port_titles[index])
-			continue;
-		const struct ethernet_port_info *port = &snapshot.ports[index];
-		unsigned int hex = port->carrier ? app_config.accent_colour :
-			app_config.secondary_colour;
-		snprintf(text, sizeof(text), "%s ETH%u", port->role, index);
-		set_label_text_if_changed(port_titles[index], text);
-		if (port->carrier && port->speed_mbps == 2500)
-			strcpy(text, "UP 2.5G");
-		else if (port->carrier && port->speed_mbps >= 1000)
-			snprintf(text, sizeof(text), "UP %uG", port->speed_mbps / 1000U);
-		else if (port->carrier)
-			snprintf(text, sizeof(text), "UP %uM", port->speed_mbps);
-		else
-			strcpy(text, "DOWN");
-		set_label_text_if_changed(port_links[index], text);
-		lv_obj_set_style_text_color(port_links[index], colour(hex), 0);
-		if (port->ipv4[0])
-			snprintf(text, sizeof(text), "%s", port->ipv4);
-		else
-			strcpy(text, "NO IP");
-		set_label_text_if_changed(port_rates[index], text);
-	}
+	if (network_lan_label)
+		set_label_text_if_changed(network_lan_label,
+			snapshot.lan_ipv4[0] ? snapshot.lan_ipv4 : "NO IP");
 
-	if (network_wifi_title) {
-		bool wifi_enabled = snapshot.wifi_2g.enabled || snapshot.wifi_5g.enabled;
-		set_label_text_if_changed(network_wifi_title, "WIFI");
-		if (snapshot.wifi_2g.enabled && snapshot.wifi_5g.enabled)
-			strcpy(text, "2G+5G");
-		else if (snapshot.wifi_2g.enabled)
-			strcpy(text, "2.4G");
-		else if (snapshot.wifi_5g.enabled)
-			strcpy(text, "5G");
+	const struct uplink_info *uplinks[] = {
+		&snapshot.ethernet, &snapshot.repeater,
+		&snapshot.tethering, &snapshot.cellular
+	};
+	static const char *const titles[] = { "ETH", "REPEATER", "USB", "CELLULAR" };
+	const struct uplink_info *active = NULL;
+	const char *active_title = NULL;
+	for (unsigned int index = 0; index < 4; ++index) {
+		const struct uplink_info *uplink = uplinks[index];
+		if (network_uplink_labels[index]) {
+			set_label_text_if_changed(network_uplink_labels[index], titles[index]);
+			lv_obj_set_style_text_color(network_uplink_labels[index],
+				colour(state_colour(uplink->state)), 0);
+		}
+		if (!active ||
+		    (uplink->state == SCREENPLUS_STATE_ACTIVE &&
+		     active->state != SCREENPLUS_STATE_ACTIVE) ||
+		    (uplink->state == SCREENPLUS_STATE_CONNECTED &&
+		     active->state != SCREENPLUS_STATE_ACTIVE &&
+		     active->state != SCREENPLUS_STATE_CONNECTED) ||
+		    (uplink->state == SCREENPLUS_STATE_CONNECTING &&
+		     active->state != SCREENPLUS_STATE_ACTIVE &&
+		     active->state != SCREENPLUS_STATE_CONNECTED &&
+		     active->state != SCREENPLUS_STATE_CONNECTING)) {
+			active = uplink;
+			active_title = titles[index];
+		}
+	}
+	if (network_wan_label) {
+		if (active && (active->state == SCREENPLUS_STATE_ACTIVE ||
+		    active->state == SCREENPLUS_STATE_CONNECTED))
+			snprintf(text, sizeof(text), "WAN %s  %s", active_title,
+				active->ipv4[0] ? active->ipv4 : "UP");
+		else if (active && active->state == SCREENPLUS_STATE_CONNECTING)
+			snprintf(text, sizeof(text), "WAN %s  WAIT", active_title);
 		else
-			strcpy(text, "OFF");
-		set_label_text_if_changed(network_wifi_state, text);
-		lv_obj_set_style_text_color(network_wifi_state,
-			colour(wifi_enabled ? app_config.accent_colour : app_config.secondary_colour), 0);
-		set_label_text_if_changed(network_wifi_detail, wifi_enabled ? "ON" : "DISABLED");
+			strcpy(text, "WAN OFF  NO UPLINK");
+		set_label_text_if_changed(network_wan_label, text);
 	}
 
 	const struct wifi_info *wifi_bands[2] = { &snapshot.wifi_2g, &snapshot.wifi_5g };
@@ -1306,7 +1315,8 @@ int main(int argc, char **argv)
 		printf("{\"ethernet\":\"%s\",\"repeater\":\"%s\","
 		       "\"tethering\":\"%s\",\"cellular\":\"%s\","
 		       "\"ethernet_ipv4\":\"%s\",\"ethernet_gateway\":\"%s\","
-		       "\"ethernet_dns\":\"%s\","
+		       "\"ethernet_dns\":\"%s\",\"repeater_ipv4\":\"%s\","
+		       "\"tethering_ipv4\":\"%s\",\"cellular_ipv4\":\"%s\","
 		       "\"wifi_2g_enabled\":%s,\"wifi_5g_enabled\":%s,"
 		       "\"wifi_mlo_enabled\":%s,\"wifi_2g_channel\":\"%s\","
 		       "\"wifi_5g_channel\":\"%s\",\"lan_ipv4\":\"%s\","
@@ -1325,6 +1335,7 @@ int main(int argc, char **argv)
 		       system_info_state_text(snapshot.tethering.state),
 		       system_info_state_text(snapshot.cellular.state),
 		       snapshot.ethernet.ipv4, snapshot.ethernet.gateway, snapshot.ethernet.dns,
+		       snapshot.repeater.ipv4, snapshot.tethering.ipv4, snapshot.cellular.ipv4,
 		       snapshot.wifi_2g.enabled ? "true" : "false",
 		       snapshot.wifi_5g.enabled ? "true" : "false",
 		       snapshot.wifi_mlo.enabled ? "true" : "false",

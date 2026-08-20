@@ -9,9 +9,9 @@ behaviour through LuCI.
 
 - Home: left-aligned time, date and weekday beside a high-contrast accent rule.
 - System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
-- Traffic: stable sampled upload/download rates, acceleration status and a
-  30-second graph.
-- Network: both physical Ethernet ports plus Wi-Fi state.
+- Traffic: stable sampled upload/download rates and a 30-second graph.
+- Network: bridge-side LAN address, all four WAN sources (Ethernet, Wi-Fi
+  repeater, USB tethering and cellular), plus the active WAN address.
 - Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
   shown as off.
 - OpenClash: live upload/download rates, active connections and cumulative
@@ -44,7 +44,7 @@ ScreenPlus stops and disables `gl_screen` but does not remove it, so uninstall
 can restore the official service. The package also registers `ScreenPlus` in
 GL.iNet's native Toggle settings; the physical switch can move between
 ScreenPlus and the official screen service. Existing prototype configurations
-are migrated idempotently to schema v3 while preserving compatible page
+are migrated idempotently to schema v4 while preserving compatible page
 enable/order settings and uploaded backgrounds.
 
 On Qualcomm NSS builds, traffic is read from the default NSS data-plane

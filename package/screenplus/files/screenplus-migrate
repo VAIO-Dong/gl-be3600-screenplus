@@ -1,7 +1,23 @@
 #!/bin/sh
 
-# Idempotent migration to the six-page, dual-band schema.
-[ "$(uci -q get screenplus.main.schema_version)" = "3" ] && exit 0
+# Idempotent migration to the bridge-LAN and multi-uplink network schema.
+schema_version="$(uci -q get screenplus.main.schema_version)"
+[ "$schema_version" = "4" ] && exit 0
+
+# Schema 3 already has the current six-page structure. Only replace the fields
+# whose meaning changed so unrelated user page choices remain untouched.
+if [ "$schema_version" = "3" ]; then
+	uci -q delete screenplus.network.field
+	uci add_list screenplus.network.field=lan
+	uci add_list screenplus.network.field=ethernet
+	uci add_list screenplus.network.field=repeater
+	uci add_list screenplus.network.field=tethering
+	uci add_list screenplus.network.field=cellular
+	uci add_list screenplus.network.field=wan_detail
+	uci set screenplus.main.schema_version=4
+	uci commit screenplus
+	exit 0
+fi
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -48,9 +64,12 @@ uci set screenplus.network=page
 uci set screenplus.network.enabled="$network_enabled"
 uci set screenplus.network.order="$network_order"
 uci -q delete screenplus.network.field
-uci add_list screenplus.network.field=port_1
-uci add_list screenplus.network.field=port_2
-uci add_list screenplus.network.field=wifi
+uci add_list screenplus.network.field=lan
+uci add_list screenplus.network.field=ethernet
+uci add_list screenplus.network.field=repeater
+uci add_list screenplus.network.field=tethering
+uci add_list screenplus.network.field=cellular
+uci add_list screenplus.network.field=wan_detail
 if [ "$network_background" = "internet.rgb565" ] &&
    [ -f /usr/share/screenplus/backgrounds/internet.rgb565 ]; then
 	mv -f /usr/share/screenplus/backgrounds/internet.rgb565 \
@@ -84,6 +103,6 @@ fi
 
 uci -q delete screenplus.internet
 uci -q delete screenplus.ports
-uci set screenplus.main.schema_version=3
+uci set screenplus.main.schema_version=4
 uci commit screenplus
 exit 0

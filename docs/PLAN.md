@@ -13,7 +13,8 @@ The screen model has six independently enabled and ordered pages:
    RPM.
 3. Traffic: stable sampled live rates plus a 30-point/30-second history graph;
    acceleration status remains available in diagnostics.
-4. Network: `eth0`, `eth1` and combined 2.4/5 GHz radio state.
+4. Network: bridge-side LAN address, Ethernet/Wi-Fi repeater/USB
+   tethering/cellular WAN states and the active WAN address.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
 6. OpenClash: state, current rates, connection count and cumulative traffic.
@@ -45,9 +46,8 @@ The screen model has six independently enabled and ordered pages:
 - OpenClash: init/UCI state and the loopback Clash `/connections` API. Its
   dashboard secret is neither logged nor passed on a command line.
 
-The collector still normalises repeater, USB tethering and cellular status for
-diagnostics, although the streamlined v2 display no longer dedicates screen
-slots to those sources.
+The collector normalises Ethernet, Wi-Fi repeater, USB tethering and cellular
+status for both the compact network page and diagnostics.
 
 ### LuCI and UCI
 
@@ -58,7 +58,7 @@ slots to those sources.
   and error colours; per-page background upload/remove.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v3 migration preserves compatible settings and renames
+- Idempotent schema-v4 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/ScreenPlus.sh`,
   with deterministic hand-off to/from the retained official screen service.

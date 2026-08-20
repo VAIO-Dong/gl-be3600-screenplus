@@ -50,9 +50,12 @@ return view.extend({
 			[ 'history', _('30-second traffic history') ]
 		]);
 		addPage(map, 'network', _('Network'), [
-			[ 'port_1', _('First Ethernet port') ],
-			[ 'port_2', _('Second Ethernet port') ],
-			[ 'wifi', _('Wi-Fi status') ]
+			[ 'lan', _('LAN IP address') ],
+			[ 'ethernet', _('Ethernet WAN') ],
+			[ 'repeater', _('Wi-Fi repeater WAN') ],
+			[ 'tethering', _('USB tethering WAN') ],
+			[ 'cellular', _('Cellular WAN') ],
+			[ 'wan_detail', _('Active WAN address') ]
 		]);
 		addPage(map, 'wifi', _('Wi-Fi credentials'), [
 			[ 'wifi_2g', _('2.4 GHz SSID and password') ],

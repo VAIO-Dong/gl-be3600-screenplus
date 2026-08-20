@@ -67,6 +67,10 @@ define Package/screenplus/postinst
 /usr/libexec/screenplus-migrate 2>/dev/null
 /etc/init.d/screenplus enable
 /etc/init.d/screenplus start
+if [ "$$(uci -q get switch-button.@main[0].func)" = "ScreenPlus" ] && \
+   [ -x /etc/init.d/gl_switch_button_check ]; then
+	/etc/init.d/gl_switch_button_check start 2>/dev/null
+fi
 exit 0
 endef
 
