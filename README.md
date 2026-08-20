@@ -9,7 +9,7 @@ behaviour through LuCI.
 
 - Home: left-aligned time, date and weekday beside a high-contrast accent rule.
 - System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
-- Traffic: fixed-position rate/total fields, icon-led upload above download and
+- Traffic: fixed-position rate-only fields, icon-led upload above download and
   a 30-second graph.
 - Network: bridge-side LAN address, all four WAN sources (Ethernet, Wi-Fi
   repeater, USB tethering and cellular), plus the active WAN address. Ethernet
@@ -17,8 +17,9 @@ behaviour through LuCI.
   green only as the healthy active uplink.
 - Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
   shown as off.
-- OpenClash: a three-row equal-column grid for state, merged live-rate/total
-  fields, active connections, CPU and memory usage.
+- OpenClash: a three-row equal-column grid with a top-right service switch,
+  state, compact live-rate/total fields, active connections, CPU and memory
+  usage.
 
 The interface defaults to a high-contrast dark theme. Primary/secondary text,
 accent/healthy, background, divider and disabled/offline/fault colours are

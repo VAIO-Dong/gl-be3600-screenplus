@@ -96,6 +96,7 @@ static lv_obj_t *network_lan_label;
 static lv_obj_t *network_uplink_labels[4];
 static lv_obj_t *network_wan_value;
 static lv_obj_t *openclash_state_label;
+static lv_obj_t *openclash_toggle;
 static struct transfer_measurement openclash_download_measurement;
 static struct transfer_measurement openclash_upload_measurement;
 static lv_obj_t *openclash_connections_value;
@@ -125,6 +126,9 @@ static bool page_animation_running;
 static lv_point_t drag_start_point;
 static int32_t drag_offset;
 static int pending_page_delta;
+static volatile sig_atomic_t openclash_toggle_request;
+static volatile sig_atomic_t openclash_toggle_busy;
+static bool openclash_toggle_syncing;
 
 static void on_signal(int signal_number)
 {
@@ -298,8 +302,9 @@ static lv_obj_t *create_label(lv_obj_t *parent, const char *text, int x, int y,
 static void set_fixed_text(lv_obj_t *label, int width, lv_text_align_t alignment)
 {
 	lv_obj_set_width(label, width);
+	lv_obj_set_height(label, 18);
 	lv_obj_set_style_text_align(label, alignment, 0);
-	lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+	lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
 }
 
 static struct transfer_measurement create_transfer_measurement(
@@ -309,18 +314,19 @@ static struct transfer_measurement create_transfer_measurement(
 	measurement.icon = create_label(parent, icon, x, y, ui_label_font(), icon_colour);
 	measurement.rate_number = create_label(parent, "0", x + 16, y,
 		ui_label_font(), app_config.primary_colour);
-	measurement.rate_unit = create_label(parent, "K/s", x + 41, y,
+	measurement.rate_unit = create_label(parent, "K/s", x + 44, y,
 		ui_label_font(), app_config.secondary_colour);
-	measurement.separator = create_label(parent, "/", x + 69, y,
+	measurement.separator = create_label(parent, "\xC2\xB7", x + 71, y,
 		ui_label_font(), app_config.secondary_colour);
-	measurement.total_number = create_label(parent, "0", x + 76, y,
+	measurement.total_number = create_label(parent, "0", x + 80, y,
 		ui_label_font(), app_config.primary_colour);
-	measurement.total_unit = create_label(parent, "KB", x + 101, y,
+	measurement.total_unit = create_label(parent, "KB", x + 108, y,
 		ui_label_font(), app_config.secondary_colour);
-	set_fixed_text(measurement.rate_number, 24, LV_TEXT_ALIGN_RIGHT);
-	set_fixed_text(measurement.rate_unit, 27, LV_TEXT_ALIGN_LEFT);
-	set_fixed_text(measurement.total_number, 24, LV_TEXT_ALIGN_RIGHT);
-	set_fixed_text(measurement.total_unit, 24, LV_TEXT_ALIGN_LEFT);
+	set_fixed_text(measurement.rate_number, 27, LV_TEXT_ALIGN_RIGHT);
+	set_fixed_text(measurement.rate_unit, 26, LV_TEXT_ALIGN_LEFT);
+	set_fixed_text(measurement.separator, 8, LV_TEXT_ALIGN_CENTER);
+	set_fixed_text(measurement.total_number, 27, LV_TEXT_ALIGN_RIGHT);
+	set_fixed_text(measurement.total_unit, 25, LV_TEXT_ALIGN_LEFT);
 	return measurement;
 }
 
@@ -758,6 +764,8 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 			LV_SYMBOL_UPLOAD, app_config.secondary_colour);
 		traffic_download_measurement = create_transfer_measurement(screen, 8, 48,
 			LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
+		set_transfer_part_visible(&traffic_upload_measurement, true, false);
+		set_transfer_part_visible(&traffic_download_measurement, true, false);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
 		traffic_chart = lv_chart_create(screen);
@@ -1050,15 +1058,38 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 	return screen;
 }
 
+static void openclash_toggle_event(lv_event_t *event)
+{
+	if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED ||
+	    openclash_toggle_syncing)
+		return;
+	lv_obj_t *toggle = lv_event_get_target_obj(event);
+	openclash_toggle_request = lv_obj_has_state(toggle, LV_STATE_CHECKED) ? 1 : -1;
+	openclash_toggle_busy = 1;
+}
+
 static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_OPENCLASH);
 	lv_obj_t *title = create_label(screen, "OPENCLASH", 8, 4, ui_label_font(),
 		app_config.accent_colour);
-	openclash_state_label = create_label(screen, "N/A", 142, 4,
+	openclash_state_label = create_label(screen, "N/A", 116, 4,
 		small_ui_font(), app_config.primary_colour);
-	lv_obj_set_width(title, 134);
-	lv_obj_set_width(openclash_state_label, 134);
+	lv_obj_set_width(title, 108);
+	lv_obj_set_width(openclash_state_label, 114);
+	openclash_toggle = lv_switch_create(screen);
+	lv_obj_set_pos(openclash_toggle, 240, 3);
+	lv_obj_set_size(openclash_toggle, 36, 19);
+	lv_obj_set_style_bg_color(openclash_toggle,
+		colour(app_config.secondary_colour), LV_PART_MAIN);
+	lv_obj_set_style_bg_color(openclash_toggle,
+		colour(app_config.accent_colour), LV_PART_MAIN | LV_STATE_CHECKED);
+	lv_obj_set_style_bg_color(openclash_toggle,
+		colour(app_config.primary_colour), LV_PART_KNOB);
+	lv_obj_add_flag(openclash_toggle, LV_OBJ_FLAG_EVENT_BUBBLE |
+		LV_OBJ_FLAG_GESTURE_BUBBLE);
+	lv_obj_add_event_cb(openclash_toggle, openclash_toggle_event,
+		LV_EVENT_VALUE_CHANGED, NULL);
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
 	openclash_download_measurement = create_transfer_measurement(screen, 8, 29,
@@ -1163,6 +1194,22 @@ static void apply_system_snapshot(lv_timer_t *timer)
 		unsigned int openclash_hex = state_colour(snapshot.openclash.state);
 		set_label_text_if_changed(openclash_state_label, display_state_text(snapshot.openclash.state));
 		lv_obj_set_style_text_color(openclash_state_label, colour(openclash_hex), 0);
+		if (openclash_toggle) {
+			if (snapshot.openclash.state == SCREENPLUS_STATE_UNAVAILABLE)
+				lv_obj_add_state(openclash_toggle, LV_STATE_DISABLED);
+			else
+				lv_obj_remove_state(openclash_toggle, LV_STATE_DISABLED);
+			if (!openclash_toggle_busy) {
+				bool enabled = snapshot.openclash.state == SCREENPLUS_STATE_ACTIVE ||
+					snapshot.openclash.state == SCREENPLUS_STATE_ERROR;
+				openclash_toggle_syncing = true;
+				if (enabled)
+					lv_obj_add_state(openclash_toggle, LV_STATE_CHECKED);
+				else
+					lv_obj_remove_state(openclash_toggle, LV_STATE_CHECKED);
+				openclash_toggle_syncing = false;
+			}
+		}
 		if (snapshot.openclash.metrics_available) {
 			update_transfer_measurement(&openclash_download_measurement,
 				snapshot.openclash.download_bytes_per_second,
@@ -1195,10 +1242,29 @@ static void apply_system_snapshot(lv_timer_t *timer)
 	}
 }
 
+static void apply_openclash_toggle_request(void)
+{
+	sig_atomic_t request = openclash_toggle_request;
+	if (!request)
+		return;
+	openclash_toggle_request = 0;
+	if (request > 0) {
+		(void)system("/sbin/uci -q set openclash.config.enable='1' && "
+			"/sbin/uci -q commit openclash && "
+			"/etc/init.d/openclash restart >/dev/null 2>&1");
+	} else {
+		(void)system("/sbin/uci -q set openclash.config.enable='0' && "
+			"/sbin/uci -q commit openclash && "
+			"/etc/init.d/openclash stop >/dev/null 2>&1");
+	}
+	openclash_toggle_busy = openclash_toggle_request != 0;
+}
+
 static void *system_worker(void *unused)
 {
 	(void)unused;
 	while (running) {
+		apply_openclash_toggle_request();
 		struct system_snapshot snapshot;
 		system_info_sample(&system_state, &snapshot);
 		pthread_mutex_lock(&snapshot_mutex);
