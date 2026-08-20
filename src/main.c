@@ -70,12 +70,15 @@ static uint64_t metrics_generation;
 static uint64_t applied_metrics_generation;
 static lv_obj_t *traffic_download_label;
 static lv_obj_t *traffic_upload_label;
-static lv_obj_t *traffic_source_label;
 static lv_obj_t *traffic_chart;
 static lv_chart_series_t *traffic_download_series;
 static lv_chart_series_t *traffic_upload_series;
 static double traffic_target_download;
 static double traffic_target_upload;
+static double traffic_last_download;
+static double traffic_last_upload;
+static unsigned int traffic_download_zero_samples;
+static unsigned int traffic_upload_zero_samples;
 static int32_t traffic_chart_peak = 64;
 static lv_obj_t *wifi_band_rows[2];
 static lv_obj_t *wifi_band_titles[2];
@@ -320,6 +323,8 @@ static void update_clock(lv_timer_t *timer)
 static void apply_metrics(lv_timer_t *timer)
 {
 	(void)timer;
+	if (drag_tracking || page_animation_running)
+		return;
 	struct system_metrics metrics;
 	pthread_mutex_lock(&metrics_mutex);
 	bool ready = metrics_ready;
@@ -360,8 +365,20 @@ static void apply_metrics(lv_timer_t *timer)
 	if (fan_detail)
 		set_label_text_if_changed(fan_detail, metrics.fan_rpm ? "RPM" : "--");
 
-	traffic_target_download = metrics.network_receive_bytes_per_second;
-	traffic_target_upload = metrics.network_transmit_bytes_per_second;
+	if (metrics.network_receive_bytes_per_second > 0.5) {
+		traffic_last_download = metrics.network_receive_bytes_per_second;
+		traffic_download_zero_samples = 0;
+	} else if (++traffic_download_zero_samples >= 2) {
+		traffic_last_download = 0.0;
+	}
+	if (metrics.network_transmit_bytes_per_second > 0.5) {
+		traffic_last_upload = metrics.network_transmit_bytes_per_second;
+		traffic_upload_zero_samples = 0;
+	} else if (++traffic_upload_zero_samples >= 2) {
+		traffic_last_upload = 0.0;
+	}
+	traffic_target_download = traffic_last_download;
+	traffic_target_upload = traffic_last_upload;
 	char rate[16];
 	char rate_text[20];
 	if (traffic_download_label) {
@@ -373,15 +390,6 @@ static void apply_metrics(lv_timer_t *timer)
 		metrics_format_rate(traffic_target_upload, rate, sizeof(rate));
 		snprintf(rate_text, sizeof(rate_text), "%s/s", rate);
 		set_label_text_if_changed(traffic_upload_label, rate_text);
-	}
-	if (traffic_source_label) {
-		set_label_text_if_changed(traffic_source_label,
-			metrics_acceleration_text(metrics.network_acceleration));
-		unsigned int status_colour = metrics.network_acceleration == NETWORK_ACCELERATION_NSS ?
-			app_config.accent_colour : metrics.network_acceleration == NETWORK_ACCELERATION_SOFTWARE ?
-			app_config.warning_colour : app_config.error_colour;
-		lv_obj_set_style_text_color(traffic_source_label,
-			colour(status_colour), 0);
 	}
 	if (traffic_chart) {
 		double maximum = traffic_target_download > traffic_target_upload ?
@@ -412,7 +420,7 @@ static void *metrics_worker(void *unused)
 		metrics_ready = true;
 		++metrics_generation;
 		pthread_mutex_unlock(&metrics_mutex);
-		for (unsigned int count = 0; count < 5 && running; ++count)
+		for (unsigned int count = 0; count < 10 && running; ++count)
 			sleep_milliseconds(100);
 	}
 	return NULL;
@@ -649,27 +657,23 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 		traffic_download_label = create_label(screen, "0B/s", 8, 19,
 			&lv_font_montserrat_18, app_config.primary_colour);
 		create_label(screen, "UP", 8, 39, &lv_font_montserrat_14,
-			app_config.secondary_colour);
+			app_config.accent_colour);
 		traffic_upload_label = create_label(screen, "0B/s", 8, 55,
 			&lv_font_montserrat_18, app_config.primary_colour);
 		lv_obj_set_width(traffic_download_label, 110);
 		lv_obj_set_width(traffic_upload_label, 110);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
-		traffic_source_label = create_label(screen, "NSS", 202, 1,
-			&lv_font_montserrat_14, app_config.accent_colour);
-		lv_obj_set_width(traffic_source_label, 76);
-		lv_obj_set_style_text_align(traffic_source_label, LV_TEXT_ALIGN_RIGHT, 0);
 		traffic_chart = lv_chart_create(screen);
-		lv_obj_set_pos(traffic_chart, 134, 15);
-		lv_obj_set_size(traffic_chart, 145, 56);
+		lv_obj_set_pos(traffic_chart, 130, 3);
+		lv_obj_set_size(traffic_chart, 151, 70);
 		lv_obj_set_style_bg_opa(traffic_chart, LV_OPA_TRANSP, 0);
 		lv_obj_set_style_border_width(traffic_chart, 0, 0);
 		lv_obj_set_style_pad_all(traffic_chart, 0, 0);
 		lv_obj_set_style_line_width(traffic_chart, 2, LV_PART_ITEMS);
 		lv_obj_set_style_size(traffic_chart, 0, 0, LV_PART_INDICATOR);
 		lv_chart_set_type(traffic_chart, LV_CHART_TYPE_LINE);
-		lv_chart_set_point_count(traffic_chart, 60);
+		lv_chart_set_point_count(traffic_chart, 30);
 		lv_chart_set_div_line_count(traffic_chart, 0, 0);
 		lv_chart_set_update_mode(traffic_chart, LV_CHART_UPDATE_MODE_SHIFT);
 		lv_chart_set_range(traffic_chart, LV_CHART_AXIS_PRIMARY_Y, 0, traffic_chart_peak);
@@ -931,11 +935,11 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 		&lv_font_montserrat_14, app_config.primary_colour);
 	openclash_connections_label = create_label(screen, "CONN --", 8, 51,
 		&lv_font_montserrat_14, app_config.secondary_colour);
-	openclash_totals_label = create_label(screen, "D --  U --", 96, 51,
+	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 51,
 		&lv_font_montserrat_14, app_config.secondary_colour);
 	lv_obj_set_width(openclash_download_label, 128);
 	lv_obj_set_width(openclash_upload_label, 130);
-	lv_obj_set_width(openclash_totals_label, 180);
+	lv_obj_set_width(openclash_totals_label, 196);
 	lv_label_set_long_mode(openclash_download_label, LV_LABEL_LONG_DOT);
 	lv_label_set_long_mode(openclash_upload_label, LV_LABEL_LONG_DOT);
 	lv_label_set_long_mode(openclash_totals_label, LV_LABEL_LONG_DOT);
@@ -966,6 +970,8 @@ static void format_total_bytes(uint64_t bytes, char *buffer, size_t size)
 static void apply_system_snapshot(lv_timer_t *timer)
 {
 	(void)timer;
+	if (drag_tracking || page_animation_running)
+		return;
 	struct system_snapshot snapshot;
 	pthread_mutex_lock(&snapshot_mutex);
 	bool ready = snapshot_ready;
@@ -1047,13 +1053,13 @@ static void apply_system_snapshot(lv_timer_t *timer)
 			set_label_text_if_changed(openclash_upload_label, text);
 			snprintf(text, sizeof(text), "CONN %u", snapshot.openclash.connection_count);
 			set_label_text_if_changed(openclash_connections_label, text);
-			snprintf(text, sizeof(text), "D %s  U %s", download_total, upload_total);
+			snprintf(text, sizeof(text), "DOWN %s  UP %s", download_total, upload_total);
 			set_label_text_if_changed(openclash_totals_label, text);
 		} else {
 			set_label_text_if_changed(openclash_download_label, "DOWN --");
 			set_label_text_if_changed(openclash_upload_label, "UP --");
 			set_label_text_if_changed(openclash_connections_label, "CONN --");
-			set_label_text_if_changed(openclash_totals_label, "D --  U --");
+			set_label_text_if_changed(openclash_totals_label, "DOWN --  UP --");
 		}
 	}
 }

@@ -11,8 +11,8 @@ The screen model has six independently enabled and ordered pages:
 1. Home: time, optional seconds, date, weekday and timezone.
 2. System: CPU utilisation/temperature, memory utilisation/used space and fan
    RPM.
-3. Traffic: sampled live rates, NSS/SW/off status plus a 60-point/30-second
-   history graph.
+3. Traffic: stable sampled live rates plus a 30-point/30-second history graph;
+   acceleration status remains available in diagnostics.
 4. Network: `eth0`, `eth1` and combined 2.4/5 GHz radio state.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
