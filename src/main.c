@@ -314,19 +314,27 @@ static struct transfer_measurement create_transfer_measurement(
 	measurement.icon = create_label(parent, icon, x, y, ui_label_font(), icon_colour);
 	measurement.rate_number = create_label(parent, "0", x + 16, y,
 		ui_label_font(), app_config.primary_colour);
-	measurement.rate_unit = create_label(parent, "K/s", x + 44, y,
+	measurement.rate_unit = create_label(parent, "K/s", x + 43, y,
 		ui_label_font(), app_config.secondary_colour);
-	measurement.separator = create_label(parent, "\xC2\xB7", x + 71, y,
-		ui_label_font(), app_config.secondary_colour);
-	measurement.total_number = create_label(parent, "0", x + 80, y,
+	measurement.separator = lv_obj_create(parent);
+	lv_obj_set_pos(measurement.separator, x + 70, y + 7);
+	lv_obj_set_size(measurement.separator, 3, 3);
+	lv_obj_set_style_radius(measurement.separator, 2, 0);
+	lv_obj_set_style_border_width(measurement.separator, 0, 0);
+	lv_obj_set_style_pad_all(measurement.separator, 0, 0);
+	lv_obj_set_style_bg_color(measurement.separator,
+		colour(app_config.secondary_colour), 0);
+	lv_obj_set_style_bg_opa(measurement.separator, LV_OPA_COVER, 0);
+	lv_obj_clear_flag(measurement.separator,
+		LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+	measurement.total_number = create_label(parent, "0", x + 76, y,
 		ui_label_font(), app_config.primary_colour);
-	measurement.total_unit = create_label(parent, "KB", x + 108, y,
+	measurement.total_unit = create_label(parent, "KB", x + 104, y,
 		ui_label_font(), app_config.secondary_colour);
 	set_fixed_text(measurement.rate_number, 27, LV_TEXT_ALIGN_RIGHT);
-	set_fixed_text(measurement.rate_unit, 26, LV_TEXT_ALIGN_LEFT);
-	set_fixed_text(measurement.separator, 8, LV_TEXT_ALIGN_CENTER);
+	set_fixed_text(measurement.rate_unit, 24, LV_TEXT_ALIGN_LEFT);
 	set_fixed_text(measurement.total_number, 27, LV_TEXT_ALIGN_RIGHT);
-	set_fixed_text(measurement.total_unit, 25, LV_TEXT_ALIGN_LEFT);
+	set_fixed_text(measurement.total_unit, 24, LV_TEXT_ALIGN_LEFT);
 	return measurement;
 }
 
@@ -769,8 +777,8 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
 		traffic_chart = lv_chart_create(screen);
-		lv_obj_set_pos(traffic_chart, 140, 3);
-		lv_obj_set_size(traffic_chart, 141, 70);
+		lv_obj_set_pos(traffic_chart, 142, 5);
+		lv_obj_set_size(traffic_chart, 134, 66);
 		lv_obj_set_style_bg_opa(traffic_chart, LV_OPA_TRANSP, 0);
 		lv_obj_set_style_border_width(traffic_chart, 0, 0);
 		lv_obj_set_style_pad_all(traffic_chart, 0, 0);
@@ -801,7 +809,7 @@ static unsigned int state_colour(enum screenplus_state state)
 	case SCREENPLUS_STATE_CONNECTING: return app_config.warning_colour;
 	case SCREENPLUS_STATE_ERROR: return app_config.error_colour;
 	case SCREENPLUS_STATE_IDLE: return app_config.secondary_colour;
-	default: return app_config.border_colour;
+	default: return app_config.secondary_colour;
 	}
 }
 
@@ -1081,9 +1089,11 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 	lv_obj_set_pos(openclash_toggle, 240, 3);
 	lv_obj_set_size(openclash_toggle, 36, 19);
 	lv_obj_set_style_bg_color(openclash_toggle,
-		colour(app_config.secondary_colour), LV_PART_MAIN);
+		colour(app_config.border_colour), LV_PART_MAIN);
 	lv_obj_set_style_bg_color(openclash_toggle,
-		colour(app_config.accent_colour), LV_PART_MAIN | LV_STATE_CHECKED);
+		colour(app_config.accent_colour), LV_PART_INDICATOR | LV_STATE_CHECKED);
+	lv_obj_set_style_bg_opa(openclash_toggle, LV_OPA_COVER,
+		LV_PART_INDICATOR | LV_STATE_CHECKED);
 	lv_obj_set_style_bg_color(openclash_toggle,
 		colour(app_config.primary_colour), LV_PART_KNOB);
 	lv_obj_add_flag(openclash_toggle, LV_OBJ_FLAG_EVENT_BUBBLE |
@@ -1094,7 +1104,7 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 	create_divider(screen, 8, 50, 268, 2);
 	openclash_download_measurement = create_transfer_measurement(screen, 8, 29,
 		LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
-	openclash_upload_measurement = create_transfer_measurement(screen, 142, 29,
+	openclash_upload_measurement = create_transfer_measurement(screen, 148, 29,
 		LV_SYMBOL_UPLOAD, app_config.secondary_colour);
 	set_transfer_part_visible(&openclash_download_measurement,
 		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates"),
@@ -1104,22 +1114,22 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"));
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections")) {
 		create_label(screen, "CONN", 8, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_connections_value = create_label(screen, "--", 51, 55,
+		openclash_connections_value = create_label(screen, "--", 52, 55,
 			ui_detail_font(), app_config.primary_colour);
-		set_fixed_text(openclash_connections_value, 34, LV_TEXT_ALIGN_RIGHT);
+		set_fixed_text(openclash_connections_value, 36, LV_TEXT_ALIGN_RIGHT);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "resources")) {
-		create_label(screen, "CPU", 97, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_cpu_value = create_label(screen, "--%", 130, 55,
+		create_label(screen, "CPU", 99, 55, ui_detail_font(), app_config.secondary_colour);
+		openclash_cpu_value = create_label(screen, "--%", 133, 55,
 			ui_detail_font(), app_config.primary_colour);
-		set_fixed_text(openclash_cpu_value, 50, LV_TEXT_ALIGN_RIGHT);
-		create_label(screen, "MEM", 186, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_memory_value = create_label(screen, "--", 221, 55,
+		set_fixed_text(openclash_cpu_value, 47, LV_TEXT_ALIGN_RIGHT);
+		create_label(screen, "MEM", 190, 55, ui_detail_font(), app_config.secondary_colour);
+		openclash_memory_value = create_label(screen, "--", 225, 55,
 			ui_detail_font(), app_config.primary_colour);
-		openclash_memory_unit = create_label(screen, "MB", 250, 55,
+		openclash_memory_unit = create_label(screen, "MB", 254, 55,
 			ui_detail_font(), app_config.secondary_colour);
-		set_fixed_text(openclash_memory_value, 28, LV_TEXT_ALIGN_RIGHT);
-		set_fixed_text(openclash_memory_unit, 26, LV_TEXT_ALIGN_LEFT);
+		set_fixed_text(openclash_memory_value, 27, LV_TEXT_ALIGN_RIGHT);
+		set_fixed_text(openclash_memory_unit, 22, LV_TEXT_ALIGN_LEFT);
 	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;

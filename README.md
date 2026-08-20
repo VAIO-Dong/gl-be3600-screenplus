@@ -21,11 +21,12 @@ behaviour through LuCI.
   state, compact live-rate/total fields, active connections, CPU and memory
   usage.
 
-The interface defaults to a high-contrast dark theme. Primary/secondary text,
-accent/healthy, background, divider and disabled/offline/fault colours are
-independently configurable; missing connections use the secondary text colour.
-Browser-cropped custom backgrounds apply immediately and can be global or
-page-specific.
+The interface defaults to a high-contrast dark theme. Theme, primary,
+secondary, background and divider colours define its visual hierarchy. Healthy
+states reuse the theme colour and missing connections reuse the secondary
+colour; available-but-disabled, offline and fault states remain independently
+configurable. Browser-cropped custom backgrounds apply immediately and can be
+global or page-specific.
 
 ## Target
 

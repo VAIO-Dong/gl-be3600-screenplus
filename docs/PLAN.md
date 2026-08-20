@@ -60,8 +60,9 @@ status for both the compact network page and diagnostics.
   navigation, transition and password policy.
 - Pages: one central order section followed by per-page visibility and field
   selection.
-- Appearance: primary/secondary text, accent/healthy, background, divider and
-  disabled/offline/fault colours; missing connections inherit secondary text.
+- Appearance: theme, primary, secondary, background and divider palette plus
+  available-but-disabled/offline/fault state colours. Healthy states inherit
+  theme and missing connections inherit secondary.
   Global/per-page background uploads apply immediately, with previews shown
   only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
@@ -81,6 +82,10 @@ status for both the compact network page and diagnostics.
   high-priority readings, such as system metrics and live traffic rates, use
   18 px. Dense network data uses full-width rows rather than narrow cards so
   complete IP addresses remain legible.
+- Theme colour marks headings, enabled controls, download graphs and healthy
+  states. Primary colour carries high-priority content; secondary colour carries
+  supporting content, upload graphs and missing states. Divider colour is
+  limited to separators and inactive control tracks.
 - Custom backgrounds receive a configurable dark overlay.
 
 ## Packaging
