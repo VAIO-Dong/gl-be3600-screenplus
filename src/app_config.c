@@ -63,7 +63,7 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->secondary_colour = 0xdcecff;
 	config->accent_colour = 0x37f59a;
 	config->background_colour = 0x030912;
-	config->border_colour = 0x4f87b8;
+	config->border_colour = 0x3b424a;
 	config->warning_colour = 0xffdc55;
 	config->error_colour = 0xff5c70;
 	config->absent_colour = 0x8a939f;

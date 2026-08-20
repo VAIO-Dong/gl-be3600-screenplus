@@ -159,6 +159,22 @@ static const lv_font_t *small_ui_font(void)
 		&lv_font_montserrat_14;
 }
 
+/* Non-home pages use one shared hierarchy: label, primary value, detail. */
+static const lv_font_t *ui_label_font(void)
+{
+	return &lv_font_montserrat_14;
+}
+
+static const lv_font_t *ui_value_font(void)
+{
+	return &lv_font_montserrat_18;
+}
+
+static const lv_font_t *ui_detail_font(void)
+{
+	return &lv_font_montserrat_14;
+}
+
 static const char *display_state_text(enum screenplus_state state)
 {
 	if (!app_config.chinese)
@@ -619,11 +635,11 @@ static lv_obj_t *build_clock_screen(lv_obj_t *parent)
 static void create_metric(lv_obj_t *parent, const char *title, int x,
 			  lv_obj_t **value_label, lv_obj_t **detail_label)
 {
-	create_label(parent, title, x + 8, 4, &lv_font_montserrat_14,
+	create_label(parent, title, x + 8, 4, ui_label_font(),
 		app_config.accent_colour);
-	*value_label = create_label(parent, "--", x + 8, 24, &lv_font_montserrat_18,
+	*value_label = create_label(parent, "--", x + 8, 24, ui_value_font(),
 		app_config.primary_colour);
-	*detail_label = create_label(parent, "--", x + 8, 50, &lv_font_montserrat_14,
+	*detail_label = create_label(parent, "--", x + 8, 50, ui_detail_font(),
 		app_config.secondary_colour);
 	lv_obj_set_width(*value_label, 78);
 	lv_obj_set_width(*detail_label, 78);
@@ -654,14 +670,14 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
 	create_divider(screen, 124, 8, 2, 60);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		create_label(screen, "UP", 8, 2, &lv_font_montserrat_14,
+		create_label(screen, "UP", 8, 2, ui_label_font(),
 			app_config.accent_colour);
 		traffic_upload_label = create_label(screen, "0B/s", 8, 19,
-			&lv_font_montserrat_18, app_config.primary_colour);
-		create_label(screen, "DOWN", 8, 39, &lv_font_montserrat_14,
+			ui_value_font(), app_config.primary_colour);
+		create_label(screen, "DOWN", 8, 39, ui_label_font(),
 			app_config.accent_colour);
 		traffic_download_label = create_label(screen, "0B/s", 8, 55,
-			&lv_font_montserrat_18, app_config.primary_colour);
+			ui_value_font(), app_config.primary_colour);
 		lv_obj_set_width(traffic_download_label, 110);
 		lv_obj_set_width(traffic_upload_label, 110);
 	}
@@ -725,10 +741,10 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
-		create_label(screen, "WAN", 8, 4, &lv_font_montserrat_14,
+		create_label(screen, "WAN", 8, 4, ui_label_font(),
 			app_config.accent_colour);
-		network_wan_value = create_label(screen, "--", 55, 4,
-			&lv_font_montserrat_14, app_config.primary_colour);
+		network_wan_value = create_label(screen, "--", 55, 1,
+			ui_value_font(), app_config.primary_colour);
 		lv_obj_set_width(network_wan_value, 221);
 		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
 	}
@@ -747,16 +763,16 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 		int next = visible == 4 ? four_column_edges[slot + 1U] :
 			8 + (int)(268U * (slot + 1U) / visible);
 		network_uplink_labels[index] = create_label(screen, titles[index], x, 29,
-			&lv_font_montserrat_14, app_config.secondary_colour);
+			ui_label_font(), app_config.secondary_colour);
 		lv_obj_set_width(network_uplink_labels[index], next - x);
 		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
 		++slot;
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
-		create_label(screen, "LAN", 8, 55, &lv_font_montserrat_14,
+		create_label(screen, "LAN", 8, 55, ui_label_font(),
 			app_config.accent_colour);
-		network_lan_label = create_label(screen, "--", 55, 55,
-			&lv_font_montserrat_14, app_config.primary_colour);
+		network_lan_label = create_label(screen, "--", 55, 52,
+			ui_value_font(), app_config.primary_colour);
 		lv_obj_set_width(network_lan_label, 221);
 		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
 	}
@@ -772,12 +788,12 @@ static void update_wifi_band_display(unsigned int band, const struct wifi_info *
 	if (!wifi->enabled) {
 		set_label_text_if_changed(wifi_ssid_labels[band], "OFF");
 		set_label_text_if_changed(wifi_password_labels[band], "");
-		lv_obj_set_y(wifi_ssid_labels[band], 10);
+		lv_obj_set_y(wifi_ssid_labels[band], 7);
 		lv_obj_set_style_text_color(wifi_ssid_labels[band],
 			colour(app_config.secondary_colour), 0);
 		return;
 	}
-	lv_obj_set_y(wifi_ssid_labels[band], 2);
+	lv_obj_set_y(wifi_ssid_labels[band], 0);
 	set_label_text_if_changed(wifi_ssid_labels[band], wifi->ssid[0] ? wifi->ssid : "--");
 	lv_obj_set_style_text_color(wifi_ssid_labels[band],
 		colour(app_config.primary_colour), 0);
@@ -925,11 +941,11 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE |
 		LV_OBJ_FLAG_GESTURE_BUBBLE);
 	wifi_band_titles[band] = create_label(row, title, 8, 10,
-		&lv_font_montserrat_14, app_config.accent_colour);
-	wifi_ssid_labels[band] = create_label(row, "--", 55, 2,
-		&lv_font_montserrat_14, app_config.primary_colour);
+		ui_label_font(), app_config.accent_colour);
+	wifi_ssid_labels[band] = create_label(row, "--", 55, 0,
+		ui_value_font(), app_config.primary_colour);
 	wifi_password_labels[band] = create_label(row, "KEY ********", 55, 20,
-		&lv_font_montserrat_14, app_config.primary_colour);
+		ui_detail_font(), app_config.primary_colour);
 	lv_obj_set_width(wifi_band_titles[band], 42);
 	lv_obj_set_width(wifi_ssid_labels[band], 221);
 	lv_obj_set_width(wifi_password_labels[band], 221);
@@ -959,19 +975,19 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_OPENCLASH);
-	create_label(screen, "OPENCLASH", 8, 3, &lv_font_montserrat_14,
+	create_label(screen, "OPENCLASH", 8, 3, ui_label_font(),
 		app_config.accent_colour);
 	openclash_state_label = create_label(screen, "N/A", 116, 3,
 		small_ui_font(), app_config.primary_colour);
 	create_divider(screen, 8, 24, 268, 2);
-	openclash_download_label = create_label(screen, "DOWN --", 8, 29,
-		&lv_font_montserrat_14, app_config.primary_colour);
-	openclash_upload_label = create_label(screen, "UP --", 146, 29,
-		&lv_font_montserrat_14, app_config.primary_colour);
-	openclash_connections_label = create_label(screen, "CONN --", 8, 51,
-		&lv_font_montserrat_14, app_config.secondary_colour);
-	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 51,
-		&lv_font_montserrat_14, app_config.secondary_colour);
+	openclash_download_label = create_label(screen, "DOWN --", 8, 27,
+		ui_value_font(), app_config.primary_colour);
+	openclash_upload_label = create_label(screen, "UP --", 146, 27,
+		ui_value_font(), app_config.primary_colour);
+	openclash_connections_label = create_label(screen, "CONN --", 8, 53,
+		ui_detail_font(), app_config.secondary_colour);
+	openclash_totals_label = create_label(screen, "DOWN --  UP --", 84, 53,
+		ui_detail_font(), app_config.secondary_colour);
 	lv_obj_set_width(openclash_download_label, 128);
 	lv_obj_set_width(openclash_upload_label, 130);
 	lv_obj_set_width(openclash_totals_label, 196);

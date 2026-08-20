@@ -174,7 +174,7 @@ return view.extend({
 			'width': WIDTH,
 			'height': HEIGHT,
 			'alt': _('Converted 284 × 76 preview'),
-			'style': 'max-width:100%;height:auto;border:2px solid #4f87b8;background:#030912'
+			'style': 'max-width:100%;height:auto;border:2px solid #3b424a;background:#030912'
 		});
 		var previewContainer = E('div', {
 			'id': 'screenplus-preview-container-' + page,
@@ -225,7 +225,7 @@ return view.extend({
 		option.validate = validateColour;
 
 		option = section.taboption('layout', form.Value, 'border', _('Divider colour'));
-		option.default = '#4f87b8';
+		option.default = '#3b424a';
 		option.rmempty = false;
 		option.validate = validateColour;
 

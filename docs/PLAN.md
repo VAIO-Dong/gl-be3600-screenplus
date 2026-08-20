@@ -61,7 +61,7 @@ status for both the compact network page and diagnostics.
   background uploads with previews shown only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v7 migration preserves compatible settings and renames
+- Idempotent schema-v8 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
@@ -71,9 +71,10 @@ status for both the compact network page and diagnostics.
 
 - Default text colours are white or near-white; muted low-contrast gray is not
   used for operational data.
-- Borders and decorative rules are at least 2 physical pixels wide.
-- The smallest active UI font is 14 px. Dense network data uses full-width rows
-  rather than narrow cards so complete IP addresses remain legible.
+- Dividers use a deep neutral gray and are at least 2 physical pixels wide.
+- Non-home pages share a 14 px label, 18 px primary-value and 14 px detail
+  hierarchy. The smallest active UI font remains 14 px. Dense network data uses
+  full-width rows rather than narrow cards so complete IP addresses remain legible.
 - Custom backgrounds receive a configurable dark overlay.
 
 ## Packaging

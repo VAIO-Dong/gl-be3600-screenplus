@@ -2,7 +2,7 @@
 
 # Idempotent migration through the simplified colour and preview schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "7" ] && exit 0
+[ "$schema_version" = "8" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -38,12 +38,24 @@ migrate_connection_colours() {
 		screenplus.appearance.standby '#4b9fff')"
 }
 
+migrate_divider_colour() {
+	divider="$(uci -q get screenplus.appearance.border)"
+	if [ -z "$divider" ] || [ "$divider" = "#4f87b8" ]; then
+		uci set screenplus.appearance.border='#3b424a'
+	fi
+}
+
 finish_migration() {
 	uci -q delete screenplus.appearance.surface
-	uci set screenplus.main.schema_version=7
+	migrate_divider_colour
+	uci set screenplus.main.schema_version=8
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "7" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "6" ]; then
 	finish_migration
@@ -92,7 +104,7 @@ uci set screenplus.appearance.primary="$primary"
 uci set screenplus.appearance.secondary="$(get_or_default screenplus.appearance.secondary '#dcecff')"
 uci set screenplus.appearance.accent="$accent"
 uci set screenplus.appearance.background="$background"
-uci set screenplus.appearance.border="$(get_or_default screenplus.appearance.border '#4f87b8')"
+uci set screenplus.appearance.border="$(get_or_default screenplus.appearance.border '#3b424a')"
 uci set screenplus.appearance.warning="$(get_or_default screenplus.appearance.warning '#ffdc55')"
 uci set screenplus.appearance.error="$(get_or_default screenplus.appearance.error '#ff5c70')"
 migrate_connection_colours

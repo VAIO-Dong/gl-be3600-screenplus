@@ -44,7 +44,7 @@ ScreenPlus stops and disables `gl_screen` but does not remove it, so uninstall
 can restore the official service. The package also registers `ScreenPlus` in
 GL.iNet's native Toggle settings; the physical switch can move between
 ScreenPlus and the official screen service. Existing prototype configurations
-are migrated idempotently to schema v7 while preserving compatible page
+are migrated idempotently to schema v8 while preserving compatible page
 enable/order settings and uploaded backgrounds.
 
 On Qualcomm NSS builds, traffic is read from the default NSS data-plane
