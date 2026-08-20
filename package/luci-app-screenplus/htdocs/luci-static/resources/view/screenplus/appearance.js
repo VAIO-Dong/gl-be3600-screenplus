@@ -196,6 +196,16 @@ return view.extend({
 		option.rmempty = false;
 		option.validate = validateColour;
 
+		option = section.option(form.Value, 'absent', _('Missing interface colour'));
+		option.default = '#8a939f';
+		option.rmempty = false;
+		option.validate = validateColour;
+
+		option = section.option(form.Value, 'standby', _('Available but disabled colour'));
+		option.default = '#4b9fff';
+		option.rmempty = false;
+		option.validate = validateColour;
+
 		option = section.option(form.Value, 'overlay_opacity', _('Background overlay opacity'));
 		option.datatype = 'range(0,100)';
 		option.default = '35';

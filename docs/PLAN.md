@@ -11,8 +11,9 @@ The screen model has six independently enabled and ordered pages:
 1. Home: time, optional seconds, date, weekday and timezone.
 2. System: CPU utilisation/temperature, memory utilisation/used space and fan
    RPM.
-3. Traffic: stable sampled live rates plus a 30-point/30-second history graph;
-   acceleration status remains available in diagnostics.
+3. Traffic: upload above download, stable sampled live rates plus a
+   30-point/30-second history graph; acceleration status remains available in
+   diagnostics.
 4. Network: bridge-side LAN address, Ethernet/Wi-Fi repeater/USB
    tethering/cellular WAN states and the active WAN address.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
@@ -59,10 +60,11 @@ status for both the compact network page and diagnostics.
   and error colours; immediately applied global/per-page background uploads.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v5 migration preserves compatible settings and renames
+- Idempotent schema-v6 migration preserves compatible settings and renames
   legacy page/background assets.
-- Native GL.iNet Toggle discovery through `/etc/gl-switch.d/ScreenPlus.sh`,
-  with deterministic hand-off to/from the retained official screen service.
+- Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
+  with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
+  deterministic hand-off to/from the retained official screen service.
 
 ## Visual rules
 

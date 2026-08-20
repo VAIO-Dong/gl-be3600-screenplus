@@ -4,4 +4,11 @@
 
 /etc/init.d/screenplus stop 2>/dev/null
 /etc/init.d/screenplus disable 2>/dev/null
+if [ "$PKG_UPGRADE" != "1" ]; then
+	/usr/libexec/screenplus-toggle-ui restore 2>/dev/null || true
+	if [ "$(uci -q get switch-button.@main[0].func)" = "screenplus" ]; then
+		uci -q delete switch-button.@main[0].func
+		uci commit switch-button
+	fi
+fi
 exit 0

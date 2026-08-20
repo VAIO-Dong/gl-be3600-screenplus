@@ -50,13 +50,15 @@ define Package/screenplus/install
 	$(INSTALL_BIN) ./files/screenplus-background $(1)/usr/libexec/screenplus-background
 	$(INSTALL_BIN) ./files/screenplus-diagnostics $(1)/usr/libexec/screenplus-diagnostics
 	$(INSTALL_BIN) ./files/screenplus-migrate $(1)/usr/libexec/screenplus-migrate
+	$(INSTALL_BIN) ./files/screenplus-toggle-ui $(1)/usr/libexec/screenplus-toggle-ui
+	$(INSTALL_BIN) ./files/screenplus-toggle-ui.lua $(1)/usr/libexec/screenplus-toggle-ui.lua
 	$(INSTALL_DIR) $(1)/usr/share/screenplus/backgrounds
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/screenplus.init $(1)/etc/init.d/screenplus
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/screenplus.config $(1)/etc/config/screenplus
 	$(INSTALL_DIR) $(1)/etc/gl-switch.d
-	$(INSTALL_BIN) ./files/ScreenPlus.sh $(1)/etc/gl-switch.d/ScreenPlus.sh
+	$(INSTALL_BIN) ./files/ScreenPlus.sh $(1)/etc/gl-switch.d/screenplus.sh
 endef
 
 define Package/screenplus/postinst
@@ -65,9 +67,16 @@ define Package/screenplus/postinst
 /etc/init.d/gl_screen stop 2>/dev/null
 /etc/init.d/gl_screen disable 2>/dev/null
 /usr/libexec/screenplus-migrate 2>/dev/null
+rm -f /etc/gl-switch.d/ScreenPlus.sh
+if [ "$$(uci -q get switch-button.@main[0].func)" = "ScreenPlus" ]; then
+	uci set switch-button.@main[0].func=screenplus
+	uci commit switch-button
+fi
+/usr/libexec/screenplus-toggle-ui apply 2>/dev/null || \
+	logger -t screenplus "native Toggle frontend patch was not applied"
 /etc/init.d/screenplus enable
 /etc/init.d/screenplus start
-if [ "$$(uci -q get switch-button.@main[0].func)" = "ScreenPlus" ] && \
+if [ "$$(uci -q get switch-button.@main[0].func)" = "screenplus" ] && \
    [ -x /etc/init.d/gl_switch_button_check ]; then
 	/etc/init.d/gl_switch_button_check start 2>/dev/null
 fi
@@ -79,6 +88,13 @@ define Package/screenplus/prerm
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 /etc/init.d/screenplus stop 2>/dev/null
 /etc/init.d/screenplus disable 2>/dev/null
+if [ "$${PKG_UPGRADE}" != "1" ]; then
+	/usr/libexec/screenplus-toggle-ui restore 2>/dev/null || true
+	if [ "$$(uci -q get switch-button.@main[0].func)" = "screenplus" ]; then
+		uci -q delete switch-button.@main[0].func
+		uci commit switch-button
+	fi
+fi
 exit 0
 endef
 

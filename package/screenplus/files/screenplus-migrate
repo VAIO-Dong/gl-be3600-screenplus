@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Idempotent migration to central page ordering and automatic backgrounds.
+# Idempotent migration through the semantic connection-colour schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "5" ] && exit 0
+[ "$schema_version" = "6" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -31,12 +31,27 @@ bind_existing_backgrounds() {
 	fi
 }
 
+migrate_connection_colours() {
+	uci set screenplus.appearance.absent="$(get_or_default \
+		screenplus.appearance.absent '#8a939f')"
+	uci set screenplus.appearance.standby="$(get_or_default \
+		screenplus.appearance.standby '#4b9fff')"
+}
+
+if [ "$schema_version" = "5" ]; then
+	migrate_connection_colours
+	uci set screenplus.main.schema_version=6
+	uci commit screenplus
+	exit 0
+fi
+
 if [ "$schema_version" = "4" ]; then
 	uci set screenplus.appearance.background_mode="$(get_or_default \
 		screenplus.appearance.background_mode page)"
 	migrate_page_order
 	bind_existing_backgrounds
-	uci set screenplus.main.schema_version=5
+	migrate_connection_colours
+	uci set screenplus.main.schema_version=6
 	uci commit screenplus
 	exit 0
 fi
@@ -55,7 +70,8 @@ if [ "$schema_version" = "3" ]; then
 		screenplus.appearance.background_mode page)"
 	migrate_page_order
 	bind_existing_backgrounds
-	uci set screenplus.main.schema_version=5
+	migrate_connection_colours
+	uci set screenplus.main.schema_version=6
 	uci commit screenplus
 	exit 0
 fi
@@ -75,6 +91,7 @@ uci set screenplus.appearance.surface="$(get_or_default screenplus.appearance.su
 uci set screenplus.appearance.border="$(get_or_default screenplus.appearance.border '#4f87b8')"
 uci set screenplus.appearance.warning="$(get_or_default screenplus.appearance.warning '#ffdc55')"
 uci set screenplus.appearance.error="$(get_or_default screenplus.appearance.error '#ff5c70')"
+migrate_connection_colours
 uci set screenplus.appearance.background_mode="$(get_or_default \
 	screenplus.appearance.background_mode page)"
 uci -q delete screenplus.appearance.foreground
@@ -143,6 +160,6 @@ uci -q delete screenplus.internet
 uci -q delete screenplus.ports
 migrate_page_order
 bind_existing_backgrounds
-uci set screenplus.main.schema_version=5
+uci set screenplus.main.schema_version=6
 uci commit screenplus
 exit 0

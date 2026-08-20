@@ -654,13 +654,13 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
 	create_divider(screen, 124, 8, 2, 60);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		create_label(screen, "DOWN", 8, 2, &lv_font_montserrat_14,
+		create_label(screen, "UP", 8, 2, &lv_font_montserrat_14,
 			app_config.accent_colour);
-		traffic_download_label = create_label(screen, "0B/s", 8, 19,
+		traffic_upload_label = create_label(screen, "0B/s", 8, 19,
 			&lv_font_montserrat_18, app_config.primary_colour);
-		create_label(screen, "UP", 8, 39, &lv_font_montserrat_14,
+		create_label(screen, "DOWN", 8, 39, &lv_font_montserrat_14,
 			app_config.accent_colour);
-		traffic_upload_label = create_label(screen, "0B/s", 8, 55,
+		traffic_download_label = create_label(screen, "0B/s", 8, 55,
 			&lv_font_montserrat_18, app_config.primary_colour);
 		lv_obj_set_width(traffic_download_label, 110);
 		lv_obj_set_width(traffic_upload_label, 110);
@@ -703,6 +703,18 @@ static unsigned int state_colour(enum screenplus_state state)
 	}
 }
 
+static unsigned int network_state_colour(enum screenplus_state state)
+{
+	switch (state) {
+	case SCREENPLUS_STATE_ACTIVE: return app_config.accent_colour;
+	case SCREENPLUS_STATE_IDLE: return app_config.standby_colour;
+	case SCREENPLUS_STATE_CONNECTING:
+	case SCREENPLUS_STATE_CONNECTED:
+	case SCREENPLUS_STATE_ERROR: return app_config.warning_colour;
+	default: return app_config.absent_colour;
+	}
+}
+
 static lv_obj_t *build_network_screen(lv_obj_t *parent)
 {
 	static const char *const fields[] = {
@@ -712,13 +724,13 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_NETWORK);
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
-		create_label(screen, "LAN", 8, 4, &lv_font_montserrat_14,
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
+		create_label(screen, "WAN", 8, 4, &lv_font_montserrat_14,
 			app_config.accent_colour);
-		network_lan_label = create_label(screen, "--", 55, 4,
+		network_wan_value = create_label(screen, "--", 55, 4,
 			&lv_font_montserrat_14, app_config.primary_colour);
-		lv_obj_set_width(network_lan_label, 221);
-		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
+		lv_obj_set_width(network_wan_value, 221);
+		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
 	}
 	unsigned int visible = 0;
 	for (unsigned int index = 0; index < 4; ++index)
@@ -740,13 +752,13 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
 		++slot;
 	}
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
-		create_label(screen, "WAN", 8, 55, &lv_font_montserrat_14,
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
+		create_label(screen, "LAN", 8, 55, &lv_font_montserrat_14,
 			app_config.accent_colour);
-		network_wan_value = create_label(screen, "--", 55, 55,
+		network_lan_label = create_label(screen, "--", 55, 55,
 			&lv_font_montserrat_14, app_config.primary_colour);
-		lv_obj_set_width(network_wan_value, 221);
-		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
+		lv_obj_set_width(network_lan_label, 221);
+		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
 	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
@@ -788,6 +800,9 @@ static void password_event(lv_event_t *event)
 	lv_event_code_t code = lv_event_get_code(event);
 	unsigned int band = (unsigned int)(uintptr_t)lv_event_get_user_data(event);
 	if (band >= 2)
+		return;
+	if (lv_event_get_current_target_obj(event) == wifi_band_rows[band] &&
+	    lv_event_get_target_obj(event) != wifi_band_rows[band])
 		return;
 	if (code == LV_EVENT_LONG_PRESSED &&
 	    app_config.password_mode != SCREENPLUS_PASSWORD_HIDDEN) {
@@ -839,13 +854,14 @@ static void password_event(lv_event_t *event)
 		password_long_press_handled = false;
 		return;
 	}
+	bool tap = !drag_moved || abs(drag_offset) < 28;
 	if (code == LV_EVENT_RELEASED && app_config.password_mode == SCREENPLUS_PASSWORD_QR) {
-		if (!drag_moved)
-			lv_obj_send_event(wifi_band_rows[band], LV_EVENT_LONG_PRESSED, NULL);
+		if (tap)
+			lv_obj_send_event(wifi_password_labels[band], LV_EVENT_LONG_PRESSED, NULL);
 		password_long_press_handled = false;
 		return;
 	}
-	if (code == LV_EVENT_RELEASED && !drag_moved &&
+	if (code == LV_EVENT_RELEASED && tap &&
 	    app_config.password_mode == SCREENPLUS_PASSWORD_TAP) {
 		password_revealed[band] = !password_revealed[band];
 		password_reveal_deadline[band] = password_revealed[band] ?
@@ -921,7 +937,10 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_label_set_long_mode(wifi_password_labels[band], LV_LABEL_LONG_DOT);
 	lv_obj_clear_flag(wifi_band_titles[band], LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_clear_flag(wifi_ssid_labels[band], LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_clear_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_add_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE |
+		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+	lv_obj_add_event_cb(wifi_password_labels[band], password_event,
+		LV_EVENT_ALL, (void *)(uintptr_t)band);
 	lv_obj_add_event_cb(row, password_event, LV_EVENT_ALL, (void *)(uintptr_t)band);
 }
 
@@ -1016,7 +1035,7 @@ static void apply_system_snapshot(lv_timer_t *timer)
 		if (network_uplink_labels[index]) {
 			set_label_text_if_changed(network_uplink_labels[index], titles[index]);
 			lv_obj_set_style_text_color(network_uplink_labels[index],
-				colour(state_colour(uplink->state)), 0);
+				colour(network_state_colour(uplink->state)), 0);
 		}
 		if (!active ||
 		    (uplink->state == SCREENPLUS_STATE_ACTIVE &&

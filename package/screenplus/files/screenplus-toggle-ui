@@ -1,0 +1,37 @@
+#!/bin/sh
+
+set -eu
+
+action="${1:-apply}"
+bundle=/www/views/gl-sdk4-ui-btnsettings.common.js.gz
+backup=/usr/share/screenplus/gl-sdk4-ui-btnsettings.common.js.gz.orig
+temporary=/tmp/screenplus-btnsettings.$$
+
+cleanup() {
+	rm -f "$temporary" "$temporary.gz"
+}
+trap cleanup EXIT INT TERM
+
+case "$action" in
+	apply)
+		[ -f "$bundle" ] || exit 0
+		gzip -dc "$bundle" > "$temporary"
+		grep -q 'screenplus:"ScreenPlus"' "$temporary" && exit 0
+		cp "$bundle" "$backup"
+		/usr/libexec/screenplus-toggle-ui.lua "$temporary"
+		gzip -9 -c "$temporary" > "$temporary.gz"
+		chmod 0644 "$temporary.gz"
+		mv -f "$temporary.gz" "$bundle"
+		logger -t screenplus "patched native Toggle labels and ScreenPlus save flow"
+		;;
+	restore)
+		[ -f "$backup" ] || exit 0
+		cp "$backup" "$bundle"
+		rm -f "$backup"
+		logger -t screenplus "restored native Toggle frontend"
+		;;
+	*)
+		echo "usage: screenplus-toggle-ui apply|restore" >&2
+		exit 2
+		;;
+esac

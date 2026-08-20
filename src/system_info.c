@@ -180,24 +180,26 @@ static void sample_ethernet(const char *active_interface, struct uplink_info *up
 
 static void sample_repeater(const char *active_interface, struct uplink_info *uplink)
 {
-	sample_interface("wwan", active_interface, uplink);
-	if (uplink->state != SCREENPLUS_STATE_UNAVAILABLE)
-		return;
-	char state[32];
+	char running[16] = {0};
 	if (run_line("/bin/ubus call repeater status 2>/dev/null | "
-		     "/usr/bin/jsonfilter -e '@.state_s' 2>/dev/null", state, sizeof(state)) == 0) {
-		uplink->state = strcmp(state, "idle") == 0 ? SCREENPLUS_STATE_IDLE : SCREENPLUS_STATE_CONNECTING;
-		strncpy(uplink->detail, state, sizeof(uplink->detail) - 1);
+		     "/usr/bin/jsonfilter -e '@.running' 2>/dev/null",
+		     running, sizeof(running)) == 0 && strcmp(running, "true") != 0) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		return;
+	}
+
+	sample_interface("wwan", active_interface, uplink);
+	if (strcmp(running, "true") == 0 &&
+	    (uplink->state == SCREENPLUS_STATE_UNAVAILABLE ||
+	     uplink->state == SCREENPLUS_STATE_IDLE)) {
+		uplink->state = SCREENPLUS_STATE_CONNECTING;
+		strcpy(uplink->detail, "WAIT");
 	}
 }
 
 static void sample_tethering(const char *active_interface, struct uplink_info *uplink)
 {
 	sample_interface("tethering", active_interface, uplink);
-	if (uplink->state == SCREENPLUS_STATE_UNAVAILABLE && path_exists("/etc/init.d/tethering")) {
-		uplink->state = SCREENPLUS_STATE_IDLE;
-		strcpy(uplink->detail, "IDLE");
-	}
 }
 
 static void sample_cellular(const char *active_interface, struct uplink_info *uplink)
@@ -206,11 +208,6 @@ static void sample_cellular(const char *active_interface, struct uplink_info *up
 	if (run_line("/bin/ubus list 'network.interface.modem_*' 2>/dev/null | head -n 1",
 		     object, sizeof(object)) == 0 && strncmp(object, "network.interface.", 18) == 0) {
 		sample_interface(object + 18, active_interface, uplink);
-		return;
-	}
-	if (run_line("/bin/ubus list cellular.modem 2>/dev/null", object, sizeof(object)) == 0) {
-		uplink->state = SCREENPLUS_STATE_IDLE;
-		strcpy(uplink->detail, "NO MODEM");
 	}
 }
 
