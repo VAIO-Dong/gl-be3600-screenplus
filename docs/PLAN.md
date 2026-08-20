@@ -18,7 +18,8 @@ The screen model has six independently enabled and ordered pages:
    tethering/cellular WAN states and the active WAN address.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
-6. OpenClash: state, current rates, connection count and cumulative traffic.
+6. OpenClash: a three-row grid with equal-width state, live-rate, connection
+   and cumulative-traffic cells.
 
 ## Implemented architecture
 

@@ -91,7 +91,8 @@ static lv_obj_t *openclash_state_label;
 static lv_obj_t *openclash_download_label;
 static lv_obj_t *openclash_upload_label;
 static lv_obj_t *openclash_connections_label;
-static lv_obj_t *openclash_totals_label;
+static lv_obj_t *openclash_download_total_label;
+static lv_obj_t *openclash_upload_total_label;
 static struct system_info_state system_state;
 static struct system_snapshot latest_snapshot;
 static pthread_mutex_t snapshot_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -975,34 +976,44 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_OPENCLASH);
-	create_label(screen, "OPENCLASH", 8, 3, ui_label_font(),
+	lv_obj_t *title = create_label(screen, "OPENCLASH", 8, 4, ui_label_font(),
 		app_config.accent_colour);
-	openclash_state_label = create_label(screen, "N/A", 116, 3,
+	openclash_state_label = create_label(screen, "N/A", 142, 4,
 		small_ui_font(), app_config.primary_colour);
-	create_divider(screen, 8, 24, 268, 2);
+	lv_obj_set_width(title, 134);
+	lv_obj_set_width(openclash_state_label, 134);
+	create_divider(screen, 8, 25, 268, 2);
+	create_divider(screen, 8, 50, 268, 2);
 	openclash_download_label = create_label(screen, LV_SYMBOL_DOWNLOAD " --", 8, 29,
 		ui_label_font(), app_config.primary_colour);
-	openclash_upload_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 146, 29,
+	openclash_upload_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 142, 29,
 		ui_label_font(), app_config.primary_colour);
-	openclash_connections_label = create_label(screen, "CONN --", 8, 51,
+	openclash_connections_label = create_label(screen, "CONN --", 8, 55,
 		ui_detail_font(), app_config.secondary_colour);
-	openclash_totals_label = create_label(screen,
-		LV_SYMBOL_DOWNLOAD " --  " LV_SYMBOL_UPLOAD " --", 84, 51,
+	openclash_download_total_label = create_label(screen, LV_SYMBOL_DOWNLOAD " --", 97, 55,
 		ui_detail_font(), app_config.secondary_colour);
-	lv_obj_set_width(openclash_download_label, 128);
-	lv_obj_set_width(openclash_upload_label, 130);
-	lv_obj_set_width(openclash_totals_label, 196);
+	openclash_upload_total_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 186, 55,
+		ui_detail_font(), app_config.secondary_colour);
+	lv_obj_set_width(openclash_download_label, 134);
+	lv_obj_set_width(openclash_upload_label, 134);
+	lv_obj_set_width(openclash_connections_label, 89);
+	lv_obj_set_width(openclash_download_total_label, 89);
+	lv_obj_set_width(openclash_upload_total_label, 90);
 	lv_label_set_long_mode(openclash_download_label, LV_LABEL_LONG_DOT);
 	lv_label_set_long_mode(openclash_upload_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(openclash_totals_label, LV_LABEL_LONG_DOT);
+	lv_label_set_long_mode(openclash_connections_label, LV_LABEL_LONG_DOT);
+	lv_label_set_long_mode(openclash_download_total_label, LV_LABEL_LONG_DOT);
+	lv_label_set_long_mode(openclash_upload_total_label, LV_LABEL_LONG_DOT);
 	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates")) {
 		lv_obj_add_flag(openclash_download_label, LV_OBJ_FLAG_HIDDEN);
 		lv_obj_add_flag(openclash_upload_label, LV_OBJ_FLAG_HIDDEN);
 	}
 	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections"))
 		lv_obj_add_flag(openclash_connections_label, LV_OBJ_FLAG_HIDDEN);
-	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"))
-		lv_obj_add_flag(openclash_totals_label, LV_OBJ_FLAG_HIDDEN);
+	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals")) {
+		lv_obj_add_flag(openclash_download_total_label, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_flag(openclash_upload_total_label, LV_OBJ_FLAG_HIDDEN);
+	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -1107,17 +1118,20 @@ static void apply_system_snapshot(lv_timer_t *timer)
 			set_label_text_if_changed(openclash_upload_label, text);
 			snprintf(text, sizeof(text), "CONN %u", snapshot.openclash.connection_count);
 			set_label_text_if_changed(openclash_connections_label, text);
-			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s  "
-				LV_SYMBOL_UPLOAD " %s", download_total, upload_total);
-			set_label_text_if_changed(openclash_totals_label, text);
+			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s", download_total);
+			set_label_text_if_changed(openclash_download_total_label, text);
+			snprintf(text, sizeof(text), LV_SYMBOL_UPLOAD " %s", upload_total);
+			set_label_text_if_changed(openclash_upload_total_label, text);
 		} else {
 			set_label_text_if_changed(openclash_download_label,
 				LV_SYMBOL_DOWNLOAD " --");
 			set_label_text_if_changed(openclash_upload_label,
 				LV_SYMBOL_UPLOAD " --");
 			set_label_text_if_changed(openclash_connections_label, "CONN --");
-			set_label_text_if_changed(openclash_totals_label,
-				LV_SYMBOL_DOWNLOAD " --  " LV_SYMBOL_UPLOAD " --");
+			set_label_text_if_changed(openclash_download_total_label,
+				LV_SYMBOL_DOWNLOAD " --");
+			set_label_text_if_changed(openclash_upload_total_label,
+				LV_SYMBOL_UPLOAD " --");
 		}
 	}
 }

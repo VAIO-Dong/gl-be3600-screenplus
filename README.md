@@ -14,8 +14,8 @@ behaviour through LuCI.
   repeater, USB tethering and cellular), plus the active WAN address.
 - Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
   shown as off.
-- OpenClash: live upload/download rates, active connections and cumulative
-  upload/download traffic.
+- OpenClash: a three-row equal-column grid for state, live upload/download
+  rates, active connections and cumulative traffic.
 
 The interface defaults to a high-contrast dark theme. Primary/secondary text,
 accent/healthy, background, divider and disabled/offline/fault colours are
