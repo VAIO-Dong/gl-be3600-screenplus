@@ -11,17 +11,16 @@ The screen model has six independently enabled and ordered pages:
 1. Home: time, optional seconds, date, weekday and timezone.
 2. System: CPU utilisation/temperature, memory utilisation/used space and fan
    RPM.
-3. Traffic: icon-led upload above download, stable sampled live rates plus a
-   30-point/30-second history graph; acceleration status remains available in
-   diagnostics.
+3. Traffic: fixed-position icon-led rate/total fields plus a 30-point/30-second
+   history graph; acceleration status remains available in diagnostics.
 4. Network: bridge-side LAN address, Ethernet/Wi-Fi repeater/USB
    tethering/cellular WAN states and the active WAN address. Ethernet state is
    carrier-aware: no cable inherits secondary text, link without uplink is
    yellow, and the healthy active uplink is green.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
-6. OpenClash: a three-row grid with equal-width state, live-rate, connection
-   and cumulative-traffic cells.
+6. OpenClash: a three-row grid with equal-width state, merged rate/total,
+   connection, CPU and memory cells.
 
 ## Implemented architecture
 
@@ -47,8 +46,9 @@ The screen model has six independently enabled and ordered pages:
   is active, with kernel netdevice counters as the portable fallback.
 - Ethernet: UCI network role mapping plus carrier, negotiated speed and IPv4.
 - Wi-Fi: active AP sections from UCI and interface state.
-- OpenClash: init/UCI state and the loopback Clash `/connections` API. Its
-  dashboard secret is neither logged nor passed on a command line.
+- OpenClash: init/UCI state, `/proc` CPU/RSS and the loopback Clash
+  `/connections` API. Its dashboard secret is neither logged nor passed on a
+  command line.
 
 The collector normalises Ethernet, Wi-Fi repeater, USB tethering and cellular
 status for both the compact network page and diagnostics.
@@ -65,7 +65,7 @@ status for both the compact network page and diagnostics.
   only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v9 migration preserves compatible settings and renames
+- Idempotent schema-v10 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and

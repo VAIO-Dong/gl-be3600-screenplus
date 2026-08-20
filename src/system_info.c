@@ -458,6 +458,64 @@ static int query_openclash_api(unsigned int port, const char *secret,
 	return result;
 }
 
+static void sample_openclash_process(struct system_info_state *state,
+				     struct openclash_info *openclash, double elapsed)
+{
+	char pid_text[32] = {0};
+	if (run_line("/bin/pidof clash 2>/dev/null", pid_text, sizeof(pid_text)) != 0) {
+		state->openclash_pid = 0;
+		state->openclash_cpu_ticks = 0;
+		return;
+	}
+	char *end = NULL;
+	long parsed_pid = strtol(pid_text, &end, 10);
+	if (parsed_pid <= 0 || end == pid_text)
+		return;
+	int pid = (int)parsed_pid;
+	char path[96];
+	char line[2048];
+	snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+	if (read_file_line(path, line, sizeof(line)) == 0) {
+		char *fields = strrchr(line, ')');
+		uint64_t user_ticks = 0;
+		uint64_t system_ticks = 0;
+		if (fields && fields[1] == ' ') {
+			char *save = NULL;
+			char *token = strtok_r(fields + 2, " ", &save);
+			for (unsigned int field = 3; token; ++field, token = strtok_r(NULL, " ", &save)) {
+				if (field == 14)
+					user_ticks = strtoull(token, NULL, 10);
+				else if (field == 15) {
+					system_ticks = strtoull(token, NULL, 10);
+					break;
+				}
+			}
+		}
+		uint64_t ticks = user_ticks + system_ticks;
+		long ticks_per_second = sysconf(_SC_CLK_TCK);
+		if (state->openclash_pid == pid && state->openclash_cpu_ticks > 0 &&
+		    ticks >= state->openclash_cpu_ticks && elapsed > 0.0 && ticks_per_second > 0)
+			openclash->cpu_percent = 100.0 *
+				(double)(ticks - state->openclash_cpu_ticks) /
+				((double)ticks_per_second * elapsed);
+		state->openclash_pid = pid;
+		state->openclash_cpu_ticks = ticks;
+	}
+
+	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	FILE *status = fopen(path, "r");
+	if (!status)
+		return;
+	while (fgets(line, sizeof(line), status)) {
+		unsigned long long rss_kib = 0;
+		if (sscanf(line, "VmRSS: %llu kB", &rss_kib) == 1) {
+			openclash->memory_bytes = rss_kib * 1024U;
+			break;
+		}
+	}
+	fclose(status);
+}
+
 static void sample_openclash(struct system_info_state *state,
 			     struct openclash_info *openclash, double elapsed)
 {
@@ -473,6 +531,7 @@ static void sample_openclash(struct system_info_state *state,
 	if (run_line("/etc/init.d/openclash status 2>/dev/null", status, sizeof(status)) == 0 &&
 	    strcmp(status, "running") == 0) {
 		openclash->state = SCREENPLUS_STATE_ACTIVE;
+		sample_openclash_process(state, openclash, elapsed);
 		char port_text[16] = {0};
 		char secret[SCREENPLUS_TEXT_MEDIUM] = {0};
 		uci_get("openclash.config.cn_port", port_text, sizeof(port_text));
@@ -499,6 +558,10 @@ static void sample_openclash(struct system_info_state *state,
 		openclash->state = SCREENPLUS_STATE_ERROR;
 	else
 		openclash->state = SCREENPLUS_STATE_IDLE;
+	if (openclash->state != SCREENPLUS_STATE_ACTIVE) {
+		state->openclash_pid = 0;
+		state->openclash_cpu_ticks = 0;
+	}
 }
 
 static void sample_firmware(char *buffer, size_t size)

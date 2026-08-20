@@ -2,7 +2,7 @@
 
 # Idempotent migration through the simplified colour and preview schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "9" ] && exit 0
+[ "$schema_version" = "10" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -43,14 +43,27 @@ migrate_divider_colour() {
 	fi
 }
 
+add_openclash_resources() {
+	fields="$(uci -q get screenplus.openclash.field)"
+	case " $fields " in
+		*" resources "*) ;;
+		*) uci add_list screenplus.openclash.field=resources ;;
+	esac
+}
+
 finish_migration() {
 	uci -q delete screenplus.appearance.surface
 	uci -q delete screenplus.appearance.absent
 	migrate_divider_colour
-	uci set screenplus.main.schema_version=9
+	add_openclash_resources
+	uci set screenplus.main.schema_version=10
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "9" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "8" ]; then
 	finish_migration
@@ -168,6 +181,7 @@ uci -q delete screenplus.openclash.field
 uci add_list screenplus.openclash.field=rates
 uci add_list screenplus.openclash.field=connections
 uci add_list screenplus.openclash.field=totals
+uci add_list screenplus.openclash.field=resources
 if [ "$openclash_background" = "ports.rgb565" ] &&
    [ -f /usr/share/screenplus/backgrounds/ports.rgb565 ]; then
 	mv -f /usr/share/screenplus/backgrounds/ports.rgb565 \

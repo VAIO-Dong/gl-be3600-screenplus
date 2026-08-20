@@ -359,6 +359,8 @@ int metrics_sample(struct metrics_state *state, struct system_metrics *metrics)
 		metrics->network_transmit_bytes_per_second =
 			counter_rate(network_transmit, state->network_transmit_bytes, elapsed);
 	}
+	metrics->network_receive_total_bytes = network_receive;
+	metrics->network_transmit_total_bytes = network_transmit;
 	metrics->temperature_celsius = read_temperature();
 	metrics->fan_rpm = read_fan_rpm();
 	metrics->uptime_seconds = read_uptime();

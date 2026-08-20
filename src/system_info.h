@@ -60,6 +60,8 @@ struct openclash_info {
 	uint64_t download_total_bytes;
 	uint64_t upload_total_bytes;
 	unsigned int connection_count;
+	double cpu_percent;
+	uint64_t memory_bytes;
 };
 
 struct system_snapshot {
@@ -84,6 +86,8 @@ struct system_info_state {
 	uint64_t port_transmit_bytes[2];
 	uint64_t openclash_download_bytes;
 	uint64_t openclash_upload_bytes;
+	uint64_t openclash_cpu_ticks;
+	int openclash_pid;
 };
 
 void system_info_state_initialize(struct system_info_state *state);

@@ -77,7 +77,8 @@ return view.extend({
 		addPage(map, 'openclash', _('OpenClash'), [
 			[ 'rates', _('Current upload and download rates') ],
 			[ 'connections', _('Current connection count') ],
-			[ 'totals', _('Total upload and download traffic') ]
+			[ 'totals', _('Total upload and download traffic') ],
+			[ 'resources', _('CPU and memory usage') ]
 		]);
 
 		return map.render();

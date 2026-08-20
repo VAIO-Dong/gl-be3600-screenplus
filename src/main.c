@@ -68,8 +68,16 @@ static bool metrics_worker_started;
 static bool metrics_ready;
 static uint64_t metrics_generation;
 static uint64_t applied_metrics_generation;
-static lv_obj_t *traffic_download_label;
-static lv_obj_t *traffic_upload_label;
+struct transfer_measurement {
+	lv_obj_t *icon;
+	lv_obj_t *rate_number;
+	lv_obj_t *rate_unit;
+	lv_obj_t *separator;
+	lv_obj_t *total_number;
+	lv_obj_t *total_unit;
+};
+static struct transfer_measurement traffic_upload_measurement;
+static struct transfer_measurement traffic_download_measurement;
 static lv_obj_t *traffic_chart;
 static lv_chart_series_t *traffic_download_series;
 static lv_chart_series_t *traffic_upload_series;
@@ -88,11 +96,12 @@ static lv_obj_t *network_lan_label;
 static lv_obj_t *network_uplink_labels[4];
 static lv_obj_t *network_wan_value;
 static lv_obj_t *openclash_state_label;
-static lv_obj_t *openclash_download_label;
-static lv_obj_t *openclash_upload_label;
-static lv_obj_t *openclash_connections_label;
-static lv_obj_t *openclash_download_total_label;
-static lv_obj_t *openclash_upload_total_label;
+static struct transfer_measurement openclash_download_measurement;
+static struct transfer_measurement openclash_upload_measurement;
+static lv_obj_t *openclash_connections_value;
+static lv_obj_t *openclash_cpu_value;
+static lv_obj_t *openclash_memory_value;
+static lv_obj_t *openclash_memory_unit;
 static struct system_info_state system_state;
 static struct system_snapshot latest_snapshot;
 static pthread_mutex_t snapshot_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -191,6 +200,8 @@ static const char *display_state_text(enum screenplus_state state)
 }
 
 static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page);
+static void set_label_text_if_changed(lv_obj_t *label, const char *text);
+static void set_page_visible(lv_obj_t *page, bool visible);
 
 static void style_screen(lv_obj_t *screen)
 {
@@ -282,6 +293,86 @@ static lv_obj_t *create_label(lv_obj_t *parent, const char *text, int x, int y,
 	lv_obj_set_style_text_font(label, font, 0);
 	lv_obj_set_style_text_color(label, colour(text_colour), 0);
 	return label;
+}
+
+static void set_fixed_text(lv_obj_t *label, int width, lv_text_align_t alignment)
+{
+	lv_obj_set_width(label, width);
+	lv_obj_set_style_text_align(label, alignment, 0);
+	lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+}
+
+static struct transfer_measurement create_transfer_measurement(
+	lv_obj_t *parent, int x, int y, const char *icon, unsigned int icon_colour)
+{
+	struct transfer_measurement measurement = {0};
+	measurement.icon = create_label(parent, icon, x, y, ui_label_font(), icon_colour);
+	measurement.rate_number = create_label(parent, "0", x + 16, y,
+		ui_label_font(), app_config.primary_colour);
+	measurement.rate_unit = create_label(parent, "K/s", x + 41, y,
+		ui_label_font(), app_config.secondary_colour);
+	measurement.separator = create_label(parent, "/", x + 69, y,
+		ui_label_font(), app_config.secondary_colour);
+	measurement.total_number = create_label(parent, "0", x + 76, y,
+		ui_label_font(), app_config.primary_colour);
+	measurement.total_unit = create_label(parent, "KB", x + 101, y,
+		ui_label_font(), app_config.secondary_colour);
+	set_fixed_text(measurement.rate_number, 24, LV_TEXT_ALIGN_RIGHT);
+	set_fixed_text(measurement.rate_unit, 27, LV_TEXT_ALIGN_LEFT);
+	set_fixed_text(measurement.total_number, 24, LV_TEXT_ALIGN_RIGHT);
+	set_fixed_text(measurement.total_unit, 24, LV_TEXT_ALIGN_LEFT);
+	return measurement;
+}
+
+static void format_fixed_quantity(double bytes, bool rate,
+				  char *number, size_t number_size,
+				  char *unit, size_t unit_size)
+{
+	static const char prefixes[] = { 'K', 'M', 'G' };
+	double value = bytes > 0.0 ? bytes / 1024.0 : 0.0;
+	unsigned int prefix = 0;
+	while (value > 999.0 && prefix < 2) {
+		value /= 1024.0;
+		++prefix;
+	}
+	unsigned int rounded = (unsigned int)(value + 0.5);
+	if (rounded > 999 && prefix < 2) {
+		rounded = (unsigned int)(value / 1024.0 + 0.5);
+		++prefix;
+	}
+	if (rounded > 999)
+		rounded = 999;
+	snprintf(number, number_size, "%u", rounded);
+	snprintf(unit, unit_size, rate ? "%c/s" : "%cB", prefixes[prefix]);
+}
+
+static void update_transfer_measurement(struct transfer_measurement *measurement,
+					double bytes_per_second, uint64_t total_bytes)
+{
+	if (!measurement || !measurement->rate_number)
+		return;
+	char number[8];
+	char unit[8];
+	format_fixed_quantity(bytes_per_second, true, number, sizeof(number), unit, sizeof(unit));
+	set_label_text_if_changed(measurement->rate_number, number);
+	set_label_text_if_changed(measurement->rate_unit, unit);
+	format_fixed_quantity((double)total_bytes, false, number, sizeof(number), unit, sizeof(unit));
+	set_label_text_if_changed(measurement->total_number, number);
+	set_label_text_if_changed(measurement->total_unit, unit);
+}
+
+static void set_transfer_part_visible(struct transfer_measurement *measurement,
+				      bool rates, bool totals)
+{
+	lv_obj_t *rate_objects[] = { measurement->rate_number, measurement->rate_unit };
+	lv_obj_t *total_objects[] = {
+		measurement->separator, measurement->total_number, measurement->total_unit
+	};
+	for (unsigned int index = 0; index < 2; ++index)
+		set_page_visible(rate_objects[index], rates);
+	for (unsigned int index = 0; index < 3; ++index)
+		set_page_visible(total_objects[index], totals);
+	set_page_visible(measurement->icon, rates || totals);
 }
 
 static void set_label_text_if_changed(lv_obj_t *label, const char *text)
@@ -398,18 +489,10 @@ static void apply_metrics(lv_timer_t *timer)
 	}
 	traffic_target_download = traffic_last_download;
 	traffic_target_upload = traffic_last_upload;
-	char rate[16];
-	char rate_text[20];
-	if (traffic_download_label) {
-		metrics_format_rate(traffic_target_download, rate, sizeof(rate));
-		snprintf(rate_text, sizeof(rate_text), "%s/s", rate);
-		set_label_text_if_changed(traffic_download_label, rate_text);
-	}
-	if (traffic_upload_label) {
-		metrics_format_rate(traffic_target_upload, rate, sizeof(rate));
-		snprintf(rate_text, sizeof(rate_text), "%s/s", rate);
-		set_label_text_if_changed(traffic_upload_label, rate_text);
-	}
+	update_transfer_measurement(&traffic_download_measurement,
+		traffic_target_download, metrics.network_receive_total_bytes);
+	update_transfer_measurement(&traffic_upload_measurement,
+		traffic_target_upload, metrics.network_transmit_total_bytes);
 	if (traffic_chart) {
 		double maximum = traffic_target_download > traffic_target_upload ?
 			traffic_target_download : traffic_target_upload;
@@ -669,23 +752,17 @@ static lv_obj_t *build_status_screen(lv_obj_t *parent)
 static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
-	create_divider(screen, 124, 8, 2, 60);
+	create_divider(screen, 134, 8, 2, 60);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		create_label(screen, LV_SYMBOL_UPLOAD, 8, 8, ui_value_font(),
-			app_config.secondary_colour);
-		traffic_upload_label = create_label(screen, "0B/s", 30, 8,
-			ui_value_font(), app_config.primary_colour);
-		create_label(screen, LV_SYMBOL_DOWNLOAD, 8, 46, ui_value_font(),
-			app_config.accent_colour);
-		traffic_download_label = create_label(screen, "0B/s", 30, 46,
-			ui_value_font(), app_config.primary_colour);
-		lv_obj_set_width(traffic_download_label, 88);
-		lv_obj_set_width(traffic_upload_label, 88);
+		traffic_upload_measurement = create_transfer_measurement(screen, 8, 10,
+			LV_SYMBOL_UPLOAD, app_config.secondary_colour);
+		traffic_download_measurement = create_transfer_measurement(screen, 8, 48,
+			LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
 		traffic_chart = lv_chart_create(screen);
-		lv_obj_set_pos(traffic_chart, 130, 3);
-		lv_obj_set_size(traffic_chart, 151, 70);
+		lv_obj_set_pos(traffic_chart, 140, 3);
+		lv_obj_set_size(traffic_chart, 141, 70);
 		lv_obj_set_style_bg_opa(traffic_chart, LV_OPA_TRANSP, 0);
 		lv_obj_set_style_border_width(traffic_chart, 0, 0);
 		lv_obj_set_style_pad_all(traffic_chart, 0, 0);
@@ -984,50 +1061,37 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 	lv_obj_set_width(openclash_state_label, 134);
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
-	openclash_download_label = create_label(screen, LV_SYMBOL_DOWNLOAD " --", 8, 29,
-		ui_label_font(), app_config.primary_colour);
-	openclash_upload_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 142, 29,
-		ui_label_font(), app_config.primary_colour);
-	openclash_connections_label = create_label(screen, "CONN --", 8, 55,
-		ui_detail_font(), app_config.secondary_colour);
-	openclash_download_total_label = create_label(screen, LV_SYMBOL_DOWNLOAD " --", 97, 55,
-		ui_detail_font(), app_config.secondary_colour);
-	openclash_upload_total_label = create_label(screen, LV_SYMBOL_UPLOAD " --", 186, 55,
-		ui_detail_font(), app_config.secondary_colour);
-	lv_obj_set_width(openclash_download_label, 134);
-	lv_obj_set_width(openclash_upload_label, 134);
-	lv_obj_set_width(openclash_connections_label, 89);
-	lv_obj_set_width(openclash_download_total_label, 89);
-	lv_obj_set_width(openclash_upload_total_label, 90);
-	lv_label_set_long_mode(openclash_download_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(openclash_upload_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(openclash_connections_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(openclash_download_total_label, LV_LABEL_LONG_DOT);
-	lv_label_set_long_mode(openclash_upload_total_label, LV_LABEL_LONG_DOT);
-	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates")) {
-		lv_obj_add_flag(openclash_download_label, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(openclash_upload_label, LV_OBJ_FLAG_HIDDEN);
+	openclash_download_measurement = create_transfer_measurement(screen, 8, 29,
+		LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
+	openclash_upload_measurement = create_transfer_measurement(screen, 142, 29,
+		LV_SYMBOL_UPLOAD, app_config.secondary_colour);
+	set_transfer_part_visible(&openclash_download_measurement,
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates"),
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"));
+	set_transfer_part_visible(&openclash_upload_measurement,
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates"),
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"));
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections")) {
+		create_label(screen, "CONN", 8, 55, ui_detail_font(), app_config.secondary_colour);
+		openclash_connections_value = create_label(screen, "--", 51, 55,
+			ui_detail_font(), app_config.primary_colour);
+		set_fixed_text(openclash_connections_value, 34, LV_TEXT_ALIGN_RIGHT);
 	}
-	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections"))
-		lv_obj_add_flag(openclash_connections_label, LV_OBJ_FLAG_HIDDEN);
-	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals")) {
-		lv_obj_add_flag(openclash_download_total_label, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(openclash_upload_total_label, LV_OBJ_FLAG_HIDDEN);
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "resources")) {
+		create_label(screen, "CPU", 97, 55, ui_detail_font(), app_config.secondary_colour);
+		openclash_cpu_value = create_label(screen, "--%", 130, 55,
+			ui_detail_font(), app_config.primary_colour);
+		set_fixed_text(openclash_cpu_value, 50, LV_TEXT_ALIGN_RIGHT);
+		create_label(screen, "MEM", 186, 55, ui_detail_font(), app_config.secondary_colour);
+		openclash_memory_value = create_label(screen, "--", 221, 55,
+			ui_detail_font(), app_config.primary_colour);
+		openclash_memory_unit = create_label(screen, "MB", 250, 55,
+			ui_detail_font(), app_config.secondary_colour);
+		set_fixed_text(openclash_memory_value, 28, LV_TEXT_ALIGN_RIGHT);
+		set_fixed_text(openclash_memory_unit, 26, LV_TEXT_ALIGN_LEFT);
 	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
-}
-
-static void format_total_bytes(uint64_t bytes, char *buffer, size_t size)
-{
-	if (bytes >= 1024ULL * 1024ULL * 1024ULL)
-		snprintf(buffer, size, "%.1fG", (double)bytes / (1024.0 * 1024.0 * 1024.0));
-	else if (bytes >= 1024ULL * 1024ULL)
-		snprintf(buffer, size, "%.0fM", (double)bytes / (1024.0 * 1024.0));
-	else if (bytes >= 1024ULL)
-		snprintf(buffer, size, "%.0fK", (double)bytes / 1024.0);
-	else
-		snprintf(buffer, size, "%lluB", (unsigned long long)bytes);
 }
 
 static void apply_system_snapshot(lv_timer_t *timer)
@@ -1099,39 +1163,34 @@ static void apply_system_snapshot(lv_timer_t *timer)
 		unsigned int openclash_hex = state_colour(snapshot.openclash.state);
 		set_label_text_if_changed(openclash_state_label, display_state_text(snapshot.openclash.state));
 		lv_obj_set_style_text_color(openclash_state_label, colour(openclash_hex), 0);
-		char download[12];
-		char upload[12];
-		char download_total[12];
-		char upload_total[12];
 		if (snapshot.openclash.metrics_available) {
-			metrics_format_rate(snapshot.openclash.download_bytes_per_second,
-				download, sizeof(download));
-			metrics_format_rate(snapshot.openclash.upload_bytes_per_second,
-				upload, sizeof(upload));
-			format_total_bytes(snapshot.openclash.download_total_bytes,
-				download_total, sizeof(download_total));
-			format_total_bytes(snapshot.openclash.upload_total_bytes,
-				upload_total, sizeof(upload_total));
-			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s/s", download);
-			set_label_text_if_changed(openclash_download_label, text);
-			snprintf(text, sizeof(text), LV_SYMBOL_UPLOAD " %s/s", upload);
-			set_label_text_if_changed(openclash_upload_label, text);
-			snprintf(text, sizeof(text), "CONN %u", snapshot.openclash.connection_count);
-			set_label_text_if_changed(openclash_connections_label, text);
-			snprintf(text, sizeof(text), LV_SYMBOL_DOWNLOAD " %s", download_total);
-			set_label_text_if_changed(openclash_download_total_label, text);
-			snprintf(text, sizeof(text), LV_SYMBOL_UPLOAD " %s", upload_total);
-			set_label_text_if_changed(openclash_upload_total_label, text);
+			update_transfer_measurement(&openclash_download_measurement,
+				snapshot.openclash.download_bytes_per_second,
+				snapshot.openclash.download_total_bytes);
+			update_transfer_measurement(&openclash_upload_measurement,
+				snapshot.openclash.upload_bytes_per_second,
+				snapshot.openclash.upload_total_bytes);
 		} else {
-			set_label_text_if_changed(openclash_download_label,
-				LV_SYMBOL_DOWNLOAD " --");
-			set_label_text_if_changed(openclash_upload_label,
-				LV_SYMBOL_UPLOAD " --");
-			set_label_text_if_changed(openclash_connections_label, "CONN --");
-			set_label_text_if_changed(openclash_download_total_label,
-				LV_SYMBOL_DOWNLOAD " --");
-			set_label_text_if_changed(openclash_upload_total_label,
-				LV_SYMBOL_UPLOAD " --");
+			update_transfer_measurement(&openclash_download_measurement, 0.0, 0);
+			update_transfer_measurement(&openclash_upload_measurement, 0.0, 0);
+		}
+		if (openclash_connections_value) {
+			snprintf(text, sizeof(text), "%u", snapshot.openclash.connection_count);
+			set_label_text_if_changed(openclash_connections_value, text);
+		}
+		if (openclash_cpu_value) {
+			unsigned int cpu = (unsigned int)(snapshot.openclash.cpu_percent + 0.5);
+			if (cpu > 999)
+				cpu = 999;
+			snprintf(text, sizeof(text), "%u%%", cpu);
+			set_label_text_if_changed(openclash_cpu_value, text);
+		}
+		if (openclash_memory_value) {
+			char unit[8];
+			format_fixed_quantity((double)snapshot.openclash.memory_bytes, false,
+				text, sizeof(text), unit, sizeof(unit));
+			set_label_text_if_changed(openclash_memory_value, text);
+			set_label_text_if_changed(openclash_memory_unit, unit);
 		}
 	}
 }
@@ -1353,6 +1412,8 @@ int main(int argc, char **argv)
 		       "\"network_acceleration\":\"%s\","
 		       "\"network_receive_bytes_per_second\":%.2f,"
 		       "\"network_transmit_bytes_per_second\":%.2f,"
+		       "\"network_receive_total_bytes\":%llu,"
+		       "\"network_transmit_total_bytes\":%llu,"
 		       "\"uptime_seconds\":%llu}\n",
 		       metrics.cpu_percent, metrics.temperature_celsius, metrics.fan_rpm,
 		       metrics.memory_percent, (unsigned long long)metrics.memory_used_bytes,
@@ -1365,6 +1426,8 @@ int main(int argc, char **argv)
 		       metrics_acceleration_text(metrics.network_acceleration),
 		       metrics.network_receive_bytes_per_second,
 		       metrics.network_transmit_bytes_per_second,
+		       (unsigned long long)metrics.network_receive_total_bytes,
+		       (unsigned long long)metrics.network_transmit_total_bytes,
 		       (unsigned long long)metrics.uptime_seconds);
 		return result == 0 ? 0 : 1;
 	}
@@ -1391,6 +1454,8 @@ int main(int argc, char **argv)
 		       "\"openclash_metrics\":%s,"
 		       "\"openclash_download_bps\":%.2f,\"openclash_upload_bps\":%.2f,"
 		       "\"openclash_connections\":%u,"
+		       "\"openclash_cpu_percent\":%.2f,"
+		       "\"openclash_memory_bytes\":%llu,"
 		       "\"openclash_download_total\":%llu,"
 		       "\"openclash_upload_total\":%llu}\n",
 		       system_info_state_text(snapshot.ethernet.state),
@@ -1412,6 +1477,8 @@ int main(int argc, char **argv)
 		       snapshot.openclash.download_bytes_per_second,
 		       snapshot.openclash.upload_bytes_per_second,
 		       snapshot.openclash.connection_count,
+		       snapshot.openclash.cpu_percent,
+		       (unsigned long long)snapshot.openclash.memory_bytes,
 		       (unsigned long long)snapshot.openclash.download_total_bytes,
 		       (unsigned long long)snapshot.openclash.upload_total_bytes);
 		return 0;
