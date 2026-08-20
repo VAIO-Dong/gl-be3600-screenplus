@@ -60,7 +60,55 @@ function convertImage(file) {
 	});
 }
 
+function rgb565Preview(base64) {
+	var raw = atob(base64.replace(/\s/g, ''));
+	if (raw.length !== WIDTH * HEIGHT * 2)
+		throw new Error(_('The installed background has an invalid size.'));
+	var canvas = document.createElement('canvas');
+	canvas.width = WIDTH;
+	canvas.height = HEIGHT;
+	var context = canvas.getContext('2d', { alpha: false });
+	var image = context.createImageData(WIDTH, HEIGHT);
+	for (var pixel = 0, offset = 0; offset < raw.length; pixel += 4, offset += 2) {
+		var value = raw.charCodeAt(offset) | (raw.charCodeAt(offset + 1) << 8);
+		var red = (value >> 11) & 0x1f;
+		var green = (value >> 5) & 0x3f;
+		var blue = value & 0x1f;
+		image.data[pixel] = (red << 3) | (red >> 2);
+		image.data[pixel + 1] = (green << 2) | (green >> 4);
+		image.data[pixel + 2] = (blue << 3) | (blue >> 2);
+		image.data[pixel + 3] = 255;
+	}
+	context.putImageData(image, 0, 0);
+	return canvas.toDataURL('image/png');
+}
+
 return view.extend({
+	setBackgroundPreview: function(page, source) {
+		var preview = document.getElementById('screenplus-preview-' + page);
+		var container = document.getElementById('screenplus-preview-container-' + page);
+		if (!preview || !container)
+			return;
+		if (source) {
+			preview.src = source;
+			container.style.display = '';
+		} else {
+			preview.removeAttribute('src');
+			container.style.display = 'none';
+		}
+	},
+
+	loadBackgroundPreview: function(page, preview, container) {
+		return fs.exec(BACKGROUND_HELPER, [ 'preview', page ]).then(function(result) {
+			if (!result || result.code !== 0 || !result.stdout)
+				return;
+			preview.src = rgb565Preview(result.stdout);
+			container.style.display = '';
+		}).catch(function() {
+			/* A missing or invalid installed image simply has no preview. */
+		});
+	},
+
 	setBackgroundModeControl: function(mode) {
 		var control = document.querySelector('[id$=".appearance.background_mode"]');
 		if (control) {
@@ -81,16 +129,16 @@ return view.extend({
 			return;
 		}
 		input.disabled = true;
+		var convertedPreview = null;
 		return convertImage(file).then(function(result) {
-			var preview = document.getElementById('screenplus-preview-' + page);
-			if (preview)
-				preview.src = result.preview;
+			convertedPreview = result.preview;
 			return fs.write('/tmp/screenplus-background-' + page + '.b64', result.base64);
 		}).then(function() {
 			return fs.exec(BACKGROUND_HELPER, [ 'install', page ]);
 		}).then(function(result) {
 			if (!result || result.code !== 0)
 				throw new Error(result && result.stderr || _('Background installation failed.'));
+			self.setBackgroundPreview(page, convertedPreview);
 			self.setBackgroundModeControl(page === 'global' ? 'global' : 'page');
 			ui.addNotification(null, E('p', {},
 				_('Background installed and applied immediately.')), 'info');
@@ -109,9 +157,7 @@ return view.extend({
 		return fs.exec(BACKGROUND_HELPER, [ 'remove', page ]).then(function(result) {
 			if (!result || result.code !== 0)
 				throw new Error(result && result.stderr || _('Background removal failed.'));
-			var preview = document.getElementById('screenplus-preview-' + page);
-			if (preview)
-				preview.removeAttribute('src');
+			self.setBackgroundPreview(page, null);
 			if (page === 'global')
 				self.setBackgroundModeControl('page');
 			ui.addNotification(null, E('p', {}, _('Uploaded background removed.')), 'info');
@@ -123,6 +169,18 @@ return view.extend({
 	},
 
 	renderUploader: function(page, title) {
+		var preview = E('img', {
+			'id': 'screenplus-preview-' + page,
+			'width': WIDTH,
+			'height': HEIGHT,
+			'alt': _('Converted 284 × 76 preview'),
+			'style': 'max-width:100%;height:auto;border:2px solid #4f87b8;background:#030912'
+		});
+		var previewContainer = E('div', {
+			'id': 'screenplus-preview-container-' + page,
+			'style': 'display:none;margin-top:.5em'
+		}, [ preview ]);
+		this.loadBackgroundPreview(page, preview, previewContainer);
 		return E('div', { 'class': 'cbi-value' }, [
 			E('label', { 'class': 'cbi-value-title' }, [ title ]),
 			E('div', { 'class': 'cbi-value-field' }, [
@@ -136,83 +194,73 @@ return view.extend({
 					'class': 'btn cbi-button cbi-button-negative',
 					'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
 				}, [ _('Remove') ]),
-				E('div', { 'style': 'margin-top:.5em' }, [
-					E('img', {
-						'id': 'screenplus-preview-' + page,
-						'width': WIDTH,
-						'height': HEIGHT,
-						'alt': _('Converted 284 × 76 preview'),
-						'style': 'max-width:100%;height:auto;border:2px solid #4f87b8;background:#030912'
-					})
-				])
+				previewContainer
 			])
 		]);
 	},
 
 	render: function() {
 		var map = new form.Map('screenplus', _('Appearance'),
-			_('Choose the high-contrast screen colours. Changes apply when the service reloads.'));
+			_('Text and layout colours are followed by connection-state colours: grey means missing, blue means available but disabled, yellow means enabled without internet, green means healthy, and red means a fault. Changes apply when the service reloads.'));
 		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Theme'));
 		section.anonymous = true;
 		section.addremove = false;
+		section.tab('layout', _('Text and layout'));
+		section.tab('states', _('Connection states'));
+		section.tab('backgrounds', _('Background images'));
 
-		var option = section.option(form.Value, 'primary', _('Primary text colour'));
+		var option = section.taboption('layout', form.Value, 'primary', _('Primary text colour'));
 		option.default = '#ffffff';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'secondary', _('Secondary text colour'));
+		option = section.taboption('layout', form.Value, 'secondary', _('Secondary text colour'));
 		option.default = '#dcecff';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'accent', _('Theme / accent colour'));
-		option.default = '#37f59a';
-		option.rmempty = false;
-		option.validate = validateColour;
-
-		option = section.option(form.Value, 'background', _('Background colour'));
+		option = section.taboption('layout', form.Value, 'background', _('Background colour'));
 		option.default = '#030912';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'surface', _('Surface colour'));
-		option.default = '#0a1828';
-		option.rmempty = false;
-		option.validate = validateColour;
-
-		option = section.option(form.Value, 'border', _('Divider / inactive colour'));
+		option = section.taboption('layout', form.Value, 'border', _('Divider colour'));
 		option.default = '#4f87b8';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'warning', _('Warning colour'));
-		option.default = '#ffdc55';
+		option = section.taboption('states', form.Value, 'accent', _('Healthy / accent colour'));
+		option.default = '#37f59a';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'error', _('Error colour'));
-		option.default = '#ff5c70';
-		option.rmempty = false;
-		option.validate = validateColour;
-
-		option = section.option(form.Value, 'absent', _('Missing interface colour'));
+		option = section.taboption('states', form.Value, 'absent', _('Missing connection colour'));
 		option.default = '#8a939f';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'standby', _('Available but disabled colour'));
+		option = section.taboption('states', form.Value, 'standby', _('Available but disabled colour'));
 		option.default = '#4b9fff';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'overlay_opacity', _('Background overlay opacity'));
+		option = section.taboption('states', form.Value, 'warning', _('Enabled but offline colour'));
+		option.default = '#ffdc55';
+		option.rmempty = false;
+		option.validate = validateColour;
+
+		option = section.taboption('states', form.Value, 'error', _('Fault colour'));
+		option.default = '#ff5c70';
+		option.rmempty = false;
+		option.validate = validateColour;
+
+		option = section.taboption('backgrounds', form.Value, 'overlay_opacity', _('Background overlay opacity'));
 		option.datatype = 'range(0,100)';
 		option.default = '35';
 		option.rmempty = false;
 		option.description = _('Percentage used when a custom background image is selected.');
 
-		option = section.option(form.ListValue, 'background_mode', _('Background image mode'));
+		option = section.taboption('backgrounds', form.ListValue, 'background_mode', _('Background image mode'));
 		option.value('page', _('Use a separate background for each page'));
 		option.value('global', _('Use one background for all pages'));
 		option.default = 'page';

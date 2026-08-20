@@ -17,10 +17,10 @@ behaviour through LuCI.
 - OpenClash: live upload/download rates, active connections and cumulative
   upload/download traffic.
 
-The interface defaults to a high-contrast dark theme. Primary text, secondary
-text, accent, background, card surface, inactive-border, warning and error
-colours are all independently configurable. Browser-cropped custom backgrounds
-apply immediately and can be global or page-specific.
+The interface defaults to a high-contrast dark theme. Primary/secondary text,
+accent/healthy, background, divider and missing/disabled/offline/fault colours
+are independently configurable. Browser-cropped custom backgrounds apply
+immediately and can be global or page-specific.
 
 ## Target
 
@@ -44,7 +44,7 @@ ScreenPlus stops and disables `gl_screen` but does not remove it, so uninstall
 can restore the official service. The package also registers `ScreenPlus` in
 GL.iNet's native Toggle settings; the physical switch can move between
 ScreenPlus and the official screen service. Existing prototype configurations
-are migrated idempotently to schema v6 while preserving compatible page
+are migrated idempotently to schema v7 while preserving compatible page
 enable/order settings and uploaded backgrounds.
 
 On Qualcomm NSS builds, traffic is read from the default NSS data-plane

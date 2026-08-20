@@ -48,7 +48,6 @@ struct screenplus_config {
 	uint32_t secondary_colour;
 	uint32_t accent_colour;
 	uint32_t background_colour;
-	uint32_t surface_colour;
 	uint32_t border_colour;
 	uint32_t warning_colour;
 	uint32_t error_colour;

@@ -69,8 +69,13 @@ case "$action" in
 		uci commit screenplus
 		reload_screenplus
 		;;
+	preview)
+		[ -f "$destination" ] && [ ! -L "$destination" ] || exit 3
+		[ "$(wc -c < "$destination")" -eq 43168 ] || exit 4
+		base64 "$destination"
+		;;
 	*)
-		echo "usage: screenplus-background install|remove PAGE" >&2
+		echo "usage: screenplus-background install|remove|preview PAGE" >&2
 		exit 2
 		;;
 esac

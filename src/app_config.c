@@ -63,7 +63,6 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->secondary_colour = 0xdcecff;
 	config->accent_colour = 0x37f59a;
 	config->background_colour = 0x030912;
-	config->surface_colour = 0x0a1828;
 	config->border_colour = 0x4f87b8;
 	config->warning_colour = 0xffdc55;
 	config->error_colour = 0xff5c70;
@@ -210,8 +209,6 @@ static void apply_appearance_option(struct screenplus_config *config,
 		config->accent_colour = parse_colour(value, config->accent_colour);
 	else if (strcmp(key, "background") == 0)
 		config->background_colour = parse_colour(value, config->background_colour);
-	else if (strcmp(key, "surface") == 0)
-		config->surface_colour = parse_colour(value, config->surface_colour);
 	else if (strcmp(key, "border") == 0)
 		config->border_colour = parse_colour(value, config->border_colour);
 	else if (strcmp(key, "warning") == 0)

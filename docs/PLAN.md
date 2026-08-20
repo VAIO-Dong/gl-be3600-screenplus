@@ -56,11 +56,12 @@ status for both the compact network page and diagnostics.
   navigation, transition and password policy.
 - Pages: one central order section followed by per-page visibility and field
   selection.
-- Appearance: primary, secondary, accent, background, surface, border, warning
-  and error colours; immediately applied global/per-page background uploads.
+- Appearance: primary/secondary text, accent/healthy, background, divider and
+  missing/disabled/offline/fault colours; immediately applied global/per-page
+  background uploads with previews shown only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v6 migration preserves compatible settings and renames
+- Idempotent schema-v7 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
