@@ -10,6 +10,9 @@
 | Touch | `/dev/input/event0` | Hynitron CST816X |
 | Backlight | `/sys/class/backlight/soc:backlight` | 0-11, observed 5 |
 | WAN/LAN NICs | `eth0`, `eth1` | both 10/100/1000/2500 Mbps |
+| CPU thermal zones | `/sys/class/thermal/thermal_zone*` | about 68-71 °C observed |
+| Fan tachometer | `/sys/class/hwmon/*/fan1_input` | `pwmfan`, about 1269 RPM observed |
+| NSS data plane | `qca_nss_dp` netdevice statistics | hardware-accelerated `eth0` counters |
 
 The LCD is mounted as a landscape touchscreen while the kernel framebuffer is
 reported in portrait scan order. Visual hardware testing confirmed that the

@@ -8,6 +8,7 @@
 struct system_metrics {
 	double cpu_percent;
 	double temperature_celsius;
+	unsigned int fan_rpm;
 	double memory_percent;
 	uint64_t memory_used_bytes;
 	uint64_t memory_total_bytes;
@@ -18,6 +19,7 @@ struct system_metrics {
 	double disk_write_bytes_per_second;
 	double network_receive_bytes_per_second;
 	double network_transmit_bytes_per_second;
+	int network_hardware_accelerated;
 	uint64_t uptime_seconds;
 	char network_interface[SCREENPLUS_INTERFACE_NAME_SIZE];
 };

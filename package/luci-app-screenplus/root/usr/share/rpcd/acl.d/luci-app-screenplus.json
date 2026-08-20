@@ -16,6 +16,7 @@
 			"file": {
 				"/tmp/screenplus-background-home.b64": [ "write", "remove" ],
 				"/tmp/screenplus-background-status.b64": [ "write", "remove" ],
+				"/tmp/screenplus-background-traffic.b64": [ "write", "remove" ],
 				"/tmp/screenplus-background-network.b64": [ "write", "remove" ],
 				"/tmp/screenplus-background-wifi.b64": [ "write", "remove" ],
 				"/tmp/screenplus-background-openclash.b64": [ "write", "remove" ],

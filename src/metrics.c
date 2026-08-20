@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/statvfs.h>
 #include <time.h>
+#include <unistd.h>
 
 static uint64_t monotonic_milliseconds(void)
 {
@@ -197,11 +198,14 @@ static int read_counter_file(const char *path, uint64_t *value)
 }
 
 static int read_network_bytes(char *interface, unsigned int size,
-			      uint64_t *receive, uint64_t *transmit)
+			      uint64_t *receive, uint64_t *transmit,
+			      int *hardware_accelerated)
 {
 	if (find_default_interface(interface, size) != 0)
 		strncpy(interface, "eth0", size - 1);
 	interface[size - 1] = '\0';
+	*hardware_accelerated = access("/sys/module/qca_nss_dp", F_OK) == 0 &&
+		(strncmp(interface, "eth", 3) == 0 || strncmp(interface, "wan", 3) == 0);
 	char path[256];
 	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/rx_bytes", interface);
 	if (read_counter_file(path, receive) != 0)
@@ -224,6 +228,18 @@ static double read_temperature(void)
 			maximum = value;
 	}
 	return maximum;
+}
+
+static unsigned int read_fan_rpm(void)
+{
+	for (unsigned int index = 0; index < 16; ++index) {
+		char path[128];
+		uint64_t rpm = 0;
+		snprintf(path, sizeof(path), "/sys/class/hwmon/hwmon%u/fan1_input", index);
+		if (read_counter_file(path, &rpm) == 0 && rpm <= 100000U)
+			return (unsigned int)rpm;
+	}
+	return 0;
 }
 
 static uint64_t read_uptime(void)
@@ -269,7 +285,8 @@ int metrics_sample(struct metrics_state *state, struct system_metrics *metrics)
 		errors++;
 	if (read_disk_bytes(&disk_read, &disk_write) != 0)
 		errors++;
-	if (read_network_bytes(interface, sizeof(interface), &network_receive, &network_transmit) != 0)
+	if (read_network_bytes(interface, sizeof(interface), &network_receive, &network_transmit,
+		&metrics->network_hardware_accelerated) != 0)
 		errors++;
 
 	double elapsed = state->sampled_milliseconds && now > state->sampled_milliseconds ?
@@ -289,6 +306,7 @@ int metrics_sample(struct metrics_state *state, struct system_metrics *metrics)
 			counter_rate(network_transmit, state->network_transmit_bytes, elapsed);
 	}
 	metrics->temperature_celsius = read_temperature();
+	metrics->fan_rpm = read_fan_rpm();
 	metrics->uptime_seconds = read_uptime();
 	strncpy(metrics->network_interface, interface, sizeof(metrics->network_interface) - 1);
 

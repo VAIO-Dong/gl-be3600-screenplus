@@ -163,12 +163,12 @@ return view.extend({
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'surface', _('Card surface colour'));
+		option = section.option(form.Value, 'surface', _('Surface colour'));
 		option.default = '#0a1828';
 		option.rmempty = false;
 		option.validate = validateColour;
 
-		option = section.option(form.Value, 'border', _('Inactive border colour'));
+		option = section.option(form.Value, 'border', _('Divider / inactive colour'));
 		option.default = '#4f87b8';
 		option.rmempty = false;
 		option.validate = validateColour;
@@ -200,6 +200,7 @@ return view.extend({
 					E('div', { 'class': 'cbi-section' }, [
 						this.renderUploader('home', _('Home / clock')),
 						this.renderUploader('status', _('Device status')),
+						this.renderUploader('traffic', _('Network traffic')),
 						this.renderUploader('network', _('Network')),
 						this.renderUploader('wifi', _('Wi-Fi credentials')),
 						this.renderUploader('openclash', _('OpenClash'))

@@ -39,9 +39,10 @@ static void set_default_page(struct screenplus_page_config *page, int order,
 void screenplus_config_defaults(struct screenplus_config *config)
 {
 	static const char *const home_fields[] = { "time", "date", "weekday" };
-	static const char *const status_fields[] = { "cpu", "memory", "storage" };
+	static const char *const status_fields[] = { "cpu", "memory", "fan" };
+	static const char *const traffic_fields[] = { "rates", "history" };
 	static const char *const network_fields[] = { "port_1", "port_2", "wifi" };
-	static const char *const wifi_fields[] = { "ssid", "password" };
+	static const char *const wifi_fields[] = { "wifi_2g", "wifi_5g" };
 	static const char *const openclash_fields[] = {
 		"rates", "connections", "totals"
 	};
@@ -53,6 +54,7 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->rotation = 90;
 	config->idle_timeout_seconds = 180;
 	config->swipe_loop = true;
+	config->slide_animation = true;
 	config->carousel_interval_seconds = 10;
 	config->password_mode = SCREENPLUS_PASSWORD_TAP;
 	config->primary_colour = 0xffffff;
@@ -68,6 +70,8 @@ void screenplus_config_defaults(struct screenplus_config *config)
 		home_fields, sizeof(home_fields) / sizeof(home_fields[0]));
 	set_default_page(&config->pages[SCREENPLUS_PAGE_STATUS], 20,
 		status_fields, sizeof(status_fields) / sizeof(status_fields[0]));
+	set_default_page(&config->pages[SCREENPLUS_PAGE_TRAFFIC], 25,
+		traffic_fields, sizeof(traffic_fields) / sizeof(traffic_fields[0]));
 	set_default_page(&config->pages[SCREENPLUS_PAGE_NETWORK], 30,
 		network_fields, sizeof(network_fields) / sizeof(network_fields[0]));
 	set_default_page(&config->pages[SCREENPLUS_PAGE_WIFI], 40,
@@ -78,7 +82,9 @@ void screenplus_config_defaults(struct screenplus_config *config)
 
 const char *screenplus_page_name(enum screenplus_page_id page)
 {
-	static const char *const names[] = { "home", "status", "network", "wifi", "openclash" };
+	static const char *const names[] = {
+		"home", "status", "traffic", "network", "wifi", "openclash"
+	};
 	return page < SCREENPLUS_PAGE_COUNT ? names[page] : "unknown";
 }
 
@@ -265,6 +271,40 @@ int screenplus_config_load(struct screenplus_config *config, const char *path)
 					copy_text(page->background, sizeof(page->background), value);
 			}
 		}
+	}
+	free(line);
+	fclose(file);
+	return 0;
+}
+
+int screenplus_timezone_load(struct screenplus_config *config, const char *path)
+{
+	FILE *file = fopen(path, "r");
+	if (!file)
+		return errno == ENOENT ? 0 : -1;
+	char section_type[32] = "";
+	char *line = NULL;
+	size_t capacity = 0;
+	while (getline(&line, &capacity, file) >= 0) {
+		char *cursor = line;
+		char directive[32];
+		char key[64];
+		char value[160];
+		if (!next_token(&cursor, directive, sizeof(directive)))
+			continue;
+		if (strcmp(directive, "config") == 0) {
+			if (!next_token(&cursor, section_type, sizeof(section_type)))
+				section_type[0] = '\0';
+			continue;
+		}
+		if (strcmp(section_type, "system") != 0 || strcmp(directive, "option") != 0 ||
+		    !next_token(&cursor, key, sizeof(key)) ||
+		    !next_token(&cursor, value, sizeof(value)))
+			continue;
+		if (strcmp(key, "timezone") == 0)
+			copy_text(config->timezone_rule, sizeof(config->timezone_rule), value);
+		else if (strcmp(key, "zonename") == 0)
+			copy_text(config->timezone_name, sizeof(config->timezone_name), value);
 	}
 	free(line);
 	fclose(file);

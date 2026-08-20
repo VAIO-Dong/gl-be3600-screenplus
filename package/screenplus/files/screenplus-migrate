@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# One-time migration from the original five-page prototype to schema v2.
-[ "$(uci -q get screenplus.main.schema_version)" = "2" ] && exit 0
+# Idempotent migration to the six-page, dual-band schema.
+[ "$(uci -q get screenplus.main.schema_version)" = "3" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -24,16 +24,25 @@ uci set screenplus.appearance.border="$(get_or_default screenplus.appearance.bor
 uci set screenplus.appearance.warning="$(get_or_default screenplus.appearance.warning '#ffdc55')"
 uci set screenplus.appearance.error="$(get_or_default screenplus.appearance.error '#ff5c70')"
 uci -q delete screenplus.appearance.foreground
-uci set screenplus.main.page_transition="$(get_or_default screenplus.main.page_transition none)"
+uci set screenplus.main.page_transition=slide
 
 uci set screenplus.status=page
 uci -q delete screenplus.status.field
 uci add_list screenplus.status.field=cpu
 uci add_list screenplus.status.field=memory
-uci add_list screenplus.status.field=storage
+uci add_list screenplus.status.field=fan
 
-network_enabled="$(get_or_default screenplus.internet.enabled 1)"
-network_order="$(get_or_default screenplus.internet.order 30)"
+uci set screenplus.traffic=page
+uci set screenplus.traffic.enabled="$(get_or_default screenplus.traffic.enabled 1)"
+uci set screenplus.traffic.order="$(get_or_default screenplus.traffic.order 25)"
+uci -q delete screenplus.traffic.field
+uci add_list screenplus.traffic.field=rates
+uci add_list screenplus.traffic.field=history
+
+network_enabled="$(uci -q get screenplus.network.enabled)"
+[ -n "$network_enabled" ] || network_enabled="$(get_or_default screenplus.internet.enabled 1)"
+network_order="$(uci -q get screenplus.network.order)"
+[ -n "$network_order" ] || network_order="$(get_or_default screenplus.internet.order 30)"
 network_background="$(uci -q get screenplus.internet.background)"
 uci set screenplus.network=page
 uci set screenplus.network.enabled="$network_enabled"
@@ -51,11 +60,13 @@ fi
 
 uci set screenplus.wifi=page
 uci -q delete screenplus.wifi.field
-uci add_list screenplus.wifi.field=ssid
-uci add_list screenplus.wifi.field=password
+uci add_list screenplus.wifi.field=wifi_2g
+uci add_list screenplus.wifi.field=wifi_5g
 
-openclash_enabled="$(get_or_default screenplus.ports.enabled 1)"
-openclash_order="$(get_or_default screenplus.ports.order 50)"
+openclash_enabled="$(uci -q get screenplus.openclash.enabled)"
+[ -n "$openclash_enabled" ] || openclash_enabled="$(get_or_default screenplus.ports.enabled 1)"
+openclash_order="$(uci -q get screenplus.openclash.order)"
+[ -n "$openclash_order" ] || openclash_order="$(get_or_default screenplus.ports.order 50)"
 openclash_background="$(uci -q get screenplus.ports.background)"
 uci set screenplus.openclash=page
 uci set screenplus.openclash.enabled="$openclash_enabled"
@@ -73,6 +84,6 @@ fi
 
 uci -q delete screenplus.internet
 uci -q delete screenplus.ports
-uci set screenplus.main.schema_version=2
+uci set screenplus.main.schema_version=3
 uci commit screenplus
 exit 0

@@ -7,17 +7,19 @@ behaviour through LuCI.
 
 ## Current pages
 
-- Home: centred time, date and weekday.
-- System: CPU utilisation, memory and overlay storage.
+- Home: left-aligned time, date and weekday beside a high-contrast accent rule.
+- System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
+- Traffic: smoothly interpolated upload/download rates and a 30-second graph.
 - Network: both physical Ethernet ports plus Wi-Fi state.
-- Wi-Fi: SSID and password; a disabled radio is shown as off.
+- Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
+  shown as off.
 - OpenClash: live upload/download rates, active connections and cumulative
   upload/download traffic.
 
 The interface defaults to a high-contrast dark theme. Primary text, secondary
 text, accent, background, card surface, inactive-border, warning and error
-colours are all independently configurable. Each page can also use a browser-cropped custom
-background.
+colours are all independently configurable. Each page can also use a
+browser-cropped custom background.
 
 ## Target
 
@@ -26,8 +28,8 @@ background.
 - `aarch64_cortex-a53_neon-vfpv4`
 
 Normal orientation is 90 degrees. The 270-degree flipped orientation remains a
-user-facing option. Instant page switching is the default for the smoothest
-response; a short slide animation is optional.
+user-facing option. Pages follow the finger during a swipe and use a short,
+high-frame-rate settling animation after release.
 
 ## Packages
 
@@ -38,9 +40,15 @@ The project produces two packages:
 
 Install the daemon first, followed by the LuCI application. Installing
 ScreenPlus stops and disables `gl_screen` but does not remove it, so uninstall
-can restore the official service. Existing prototype configurations are
-migrated once to schema v2 while preserving page enable/order settings and
-uploaded backgrounds.
+can restore the official service. The package also registers `ScreenPlus` in
+GL.iNet's native Toggle settings; the physical switch can move between
+ScreenPlus and the official screen service. Existing prototype configurations
+are migrated idempotently to schema v3 while preserving compatible page
+enable/order settings and uploaded backgrounds.
+
+On Qualcomm NSS builds, traffic is read from the default NSS data-plane
+netdevice counters. This keeps ECM/PPE hardware acceleration enabled. Other
+builds fall back to the same kernel netdevice statistics interface.
 
 ## Local development build
 

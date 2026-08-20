@@ -40,10 +40,10 @@ return view.extend({
 		o.default = o.enabled;
 
 		o = s.option(form.ListValue, 'page_transition', _('Page transition'));
-		o.value('none', _('Instant (recommended)'));
-		o.value('slide', _('Short slide animation'));
-		o.default = 'none';
-		o.description = _('Instant switching gives the smoothest response on the built-in display.');
+		o.value('slide', _('Follow touch with smooth settle (recommended)'));
+		o.value('none', _('Follow touch with instant settle'));
+		o.default = 'slide';
+		o.description = _('Pages follow the finger directly; this controls the short settling motion after release.');
 
 		o = s.option(form.Flag, 'auto_carousel', _('Automatic page carousel'));
 		o.default = o.disabled;

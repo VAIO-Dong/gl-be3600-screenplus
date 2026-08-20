@@ -152,6 +152,8 @@ $dataEntries = @(
     @{ Name='./etc'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./etc/config'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./etc/config/screenplus'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus.config')) },
+	@{ Name='./etc/gl-switch.d'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./etc/gl-switch.d/ScreenPlus.sh'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'ScreenPlus.sh')) },
     @{ Name='./etc/init.d'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./etc/init.d/screenplus'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus.init')) },
     @{ Name='./usr'; Type='directory'; Mode=493; Content=$null },

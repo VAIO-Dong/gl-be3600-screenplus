@@ -11,6 +11,7 @@
 enum screenplus_page_id {
 	SCREENPLUS_PAGE_HOME,
 	SCREENPLUS_PAGE_STATUS,
+	SCREENPLUS_PAGE_TRAFFIC,
 	SCREENPLUS_PAGE_NETWORK,
 	SCREENPLUS_PAGE_WIFI,
 	SCREENPLUS_PAGE_OPENCLASH,
@@ -53,11 +54,14 @@ struct screenplus_config {
 	uint32_t error_colour;
 	bool slide_animation;
 	unsigned int overlay_opacity;
+	char timezone_rule[64];
+	char timezone_name[64];
 	struct screenplus_page_config pages[SCREENPLUS_PAGE_COUNT];
 };
 
 void screenplus_config_defaults(struct screenplus_config *config);
 int screenplus_config_load(struct screenplus_config *config, const char *path);
+int screenplus_timezone_load(struct screenplus_config *config, const char *path);
 bool screenplus_page_has_field(const struct screenplus_config *config,
 			       enum screenplus_page_id page, const char *field);
 const char *screenplus_page_name(enum screenplus_page_id page);

@@ -6,7 +6,7 @@ umask 077
 action="${1:-}"
 page="${2:-}"
 case "$page" in
-	home|status|network|wifi|openclash) ;;
+	home|status|traffic|network|wifi|openclash) ;;
 	*) echo "invalid page" >&2; exit 2 ;;
 esac
 

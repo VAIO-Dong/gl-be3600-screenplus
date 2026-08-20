@@ -41,9 +41,13 @@ return view.extend({
 			[ 'timezone', _('Time zone') ]
 		]);
 		addPage(map, 'status', _('Device status'), [
-			[ 'cpu', _('CPU utilisation') ],
-			[ 'memory', _('Memory') ],
-			[ 'storage', _('Storage usage') ]
+			[ 'cpu', _('CPU utilisation and temperature') ],
+			[ 'memory', _('Memory utilisation and used space') ],
+			[ 'fan', _('Fan speed') ]
+		]);
+		addPage(map, 'traffic', _('Network traffic'), [
+			[ 'rates', _('Live upload and download rates') ],
+			[ 'history', _('30-second traffic history') ]
 		]);
 		addPage(map, 'network', _('Network'), [
 			[ 'port_1', _('First Ethernet port') ],
@@ -51,8 +55,8 @@ return view.extend({
 			[ 'wifi', _('Wi-Fi status') ]
 		]);
 		addPage(map, 'wifi', _('Wi-Fi credentials'), [
-			[ 'ssid', _('SSID') ],
-			[ 'password', _('Password') ]
+			[ 'wifi_2g', _('2.4 GHz SSID and password') ],
+			[ 'wifi_5g', _('5 GHz SSID and password') ]
 		]);
 		addPage(map, 'openclash', _('OpenClash'), [
 			[ 'rates', _('Current upload and download rates') ],

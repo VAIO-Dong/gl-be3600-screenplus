@@ -13,7 +13,13 @@ start_service() {
 	/usr/libexec/screenplus-migrate 2>/dev/null
 	config_load screenplus
 	config_get_bool enabled main enabled 1
-	[ "$enabled" -eq 1 ] || return 0
+	if [ "$enabled" -ne 1 ]; then
+		if [ -x /etc/init.d/gl_screen ]; then
+			/etc/init.d/gl_screen enable 2>/dev/null
+			/etc/init.d/gl_screen start 2>/dev/null
+		fi
+		return 0
+	fi
 	config_get rotation main rotation 90
 	config_get brightness main brightness 5
 	case "$rotation" in
@@ -49,5 +55,5 @@ reload_service() {
 }
 
 service_triggers() {
-	procd_add_reload_trigger screenplus
+	procd_add_reload_trigger screenplus system
 }

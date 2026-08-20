@@ -55,6 +55,8 @@ define Package/screenplus/install
 	$(INSTALL_BIN) ./files/screenplus.init $(1)/etc/init.d/screenplus
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/screenplus.config $(1)/etc/config/screenplus
+	$(INSTALL_DIR) $(1)/etc/gl-switch.d
+	$(INSTALL_BIN) ./files/ScreenPlus.sh $(1)/etc/gl-switch.d/ScreenPlus.sh
 endef
 
 define Package/screenplus/postinst
