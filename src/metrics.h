@@ -5,6 +5,12 @@
 
 #define SCREENPLUS_INTERFACE_NAME_SIZE 32
 
+enum network_acceleration_mode {
+	NETWORK_ACCELERATION_OFF = 0,
+	NETWORK_ACCELERATION_SOFTWARE,
+	NETWORK_ACCELERATION_NSS,
+};
+
 struct system_metrics {
 	double cpu_percent;
 	double temperature_celsius;
@@ -20,6 +26,7 @@ struct system_metrics {
 	double network_receive_bytes_per_second;
 	double network_transmit_bytes_per_second;
 	int network_hardware_accelerated;
+	enum network_acceleration_mode network_acceleration;
 	uint64_t uptime_seconds;
 	char network_interface[SCREENPLUS_INTERFACE_NAME_SIZE];
 };
@@ -38,5 +45,6 @@ struct metrics_state {
 void metrics_state_initialize(struct metrics_state *state);
 int metrics_sample(struct metrics_state *state, struct system_metrics *metrics);
 void metrics_format_rate(double bytes_per_second, char *buffer, unsigned int size);
+const char *metrics_acceleration_text(enum network_acceleration_mode mode);
 
 #endif

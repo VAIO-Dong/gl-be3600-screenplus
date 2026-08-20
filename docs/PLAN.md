@@ -11,7 +11,8 @@ The screen model has six independently enabled and ordered pages:
 1. Home: time, optional seconds, date, weekday and timezone.
 2. System: CPU utilisation/temperature, memory utilisation/used space and fan
    RPM.
-3. Traffic: live rates plus a 60-point/30-second history graph.
+3. Traffic: sampled live rates, NSS/SW/off status plus a 60-point/30-second
+   history graph.
 4. Network: `eth0`, `eth1` and combined 2.4/5 GHz radio state.
 5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
    and QR policies.
@@ -26,7 +27,8 @@ The screen model has six independently enabled and ordered pages:
   framebuffer.
 - Two full-capacity partial-render buffers, a roughly 60 Hz refresh period and
   change-only label updates.
-- Direct finger-following page translation with a 70-180 ms ease-out settle,
+- Direct finger-following page translation that redraws only the current and
+  adjacent page, with a 70-180 ms ease-out settle,
   optional page loop/carousel, idle backlight control and 90/270-degree
   orientation.
 - Asynchronous bounded collection so OpenClash and UCI probes do not block the

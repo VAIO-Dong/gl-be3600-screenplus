@@ -61,6 +61,13 @@ static lv_obj_t *memory_detail;
 static lv_obj_t *fan_value;
 static lv_obj_t *fan_detail;
 static struct metrics_state metric_state;
+static struct system_metrics latest_metrics;
+static pthread_mutex_t metrics_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t metrics_worker_thread;
+static bool metrics_worker_started;
+static bool metrics_ready;
+static uint64_t metrics_generation;
+static uint64_t applied_metrics_generation;
 static lv_obj_t *traffic_download_label;
 static lv_obj_t *traffic_upload_label;
 static lv_obj_t *traffic_source_label;
@@ -69,8 +76,6 @@ static lv_chart_series_t *traffic_download_series;
 static lv_chart_series_t *traffic_upload_series;
 static double traffic_target_download;
 static double traffic_target_upload;
-static double traffic_display_download;
-static double traffic_display_upload;
 static int32_t traffic_chart_peak = 64;
 static lv_obj_t *wifi_band_rows[2];
 static lv_obj_t *wifi_band_titles[2];
@@ -312,11 +317,19 @@ static void update_clock(lv_timer_t *timer)
 	set_label_text_if_changed(date_label, date_text);
 }
 
-static void update_metrics(lv_timer_t *timer)
+static void apply_metrics(lv_timer_t *timer)
 {
 	(void)timer;
 	struct system_metrics metrics;
-	metrics_sample(&metric_state, &metrics);
+	pthread_mutex_lock(&metrics_mutex);
+	bool ready = metrics_ready;
+	uint64_t generation = metrics_generation;
+	if (ready)
+		metrics = latest_metrics;
+	pthread_mutex_unlock(&metrics_mutex);
+	if (!ready || generation == applied_metrics_generation)
+		return;
+	applied_metrics_generation = generation;
 	char main_text[24];
 	char detail_text[24];
 
@@ -349,12 +362,26 @@ static void update_metrics(lv_timer_t *timer)
 
 	traffic_target_download = metrics.network_receive_bytes_per_second;
 	traffic_target_upload = metrics.network_transmit_bytes_per_second;
+	char rate[16];
+	char rate_text[20];
+	if (traffic_download_label) {
+		metrics_format_rate(traffic_target_download, rate, sizeof(rate));
+		snprintf(rate_text, sizeof(rate_text), "%s/s", rate);
+		set_label_text_if_changed(traffic_download_label, rate_text);
+	}
+	if (traffic_upload_label) {
+		metrics_format_rate(traffic_target_upload, rate, sizeof(rate));
+		snprintf(rate_text, sizeof(rate_text), "%s/s", rate);
+		set_label_text_if_changed(traffic_upload_label, rate_text);
+	}
 	if (traffic_source_label) {
 		set_label_text_if_changed(traffic_source_label,
-			metrics.network_hardware_accelerated ? "NSS" : "NET");
+			metrics_acceleration_text(metrics.network_acceleration));
+		unsigned int status_colour = metrics.network_acceleration == NETWORK_ACCELERATION_NSS ?
+			app_config.accent_colour : metrics.network_acceleration == NETWORK_ACCELERATION_SOFTWARE ?
+			app_config.warning_colour : app_config.error_colour;
 		lv_obj_set_style_text_color(traffic_source_label,
-			colour(metrics.network_hardware_accelerated ? app_config.accent_colour :
-			app_config.secondary_colour), 0);
+			colour(status_colour), 0);
 	}
 	if (traffic_chart) {
 		double maximum = traffic_target_download > traffic_target_upload ?
@@ -368,63 +395,58 @@ static void update_metrics(lv_timer_t *timer)
 			traffic_chart_peak = 64;
 		lv_chart_set_range(traffic_chart, LV_CHART_AXIS_PRIMARY_Y, 0, traffic_chart_peak);
 		lv_chart_set_next_value(traffic_chart, traffic_download_series,
-			(int32_t)(traffic_display_download / 1024.0));
+			(int32_t)(traffic_target_download / 1024.0));
 		lv_chart_set_next_value(traffic_chart, traffic_upload_series,
-			(int32_t)(traffic_display_upload / 1024.0));
+			(int32_t)(traffic_target_upload / 1024.0));
 	}
 }
 
-static void animate_traffic_numbers(lv_timer_t *timer)
+static void *metrics_worker(void *unused)
 {
-	(void)timer;
-	traffic_display_download += (traffic_target_download - traffic_display_download) * 0.22;
-	traffic_display_upload += (traffic_target_upload - traffic_display_upload) * 0.22;
-	if (traffic_target_download - traffic_display_download < 1.0 &&
-	    traffic_display_download - traffic_target_download < 1.0)
-		traffic_display_download = traffic_target_download;
-	if (traffic_target_upload - traffic_display_upload < 1.0 &&
-	    traffic_display_upload - traffic_target_upload < 1.0)
-		traffic_display_upload = traffic_target_upload;
-	char rate[16];
-	char text[20];
-	if (traffic_download_label) {
-		metrics_format_rate(traffic_display_download, rate, sizeof(rate));
-		snprintf(text, sizeof(text), "%s/s", rate);
-		set_label_text_if_changed(traffic_download_label, text);
+	(void)unused;
+	while (running) {
+		struct system_metrics metrics;
+		metrics_sample(&metric_state, &metrics);
+		pthread_mutex_lock(&metrics_mutex);
+		latest_metrics = metrics;
+		metrics_ready = true;
+		++metrics_generation;
+		pthread_mutex_unlock(&metrics_mutex);
+		for (unsigned int count = 0; count < 5 && running; ++count)
+			sleep_milliseconds(100);
 	}
-	if (traffic_upload_label) {
-		metrics_format_rate(traffic_display_upload, rate, sizeof(rate));
-		snprintf(text, sizeof(text), "%s/s", rate);
-		set_label_text_if_changed(traffic_upload_label, text);
-	}
-	if (traffic_chart && traffic_download_series && traffic_upload_series) {
-		uint32_t download_start = lv_chart_get_x_start_point(
-			traffic_chart, traffic_download_series);
-		uint32_t upload_start = lv_chart_get_x_start_point(
-			traffic_chart, traffic_upload_series);
-		lv_chart_set_series_value_by_id(traffic_chart, traffic_download_series,
-			(download_start + 59U) % 60U,
-			(int32_t)(traffic_display_download / 1024.0));
-		lv_chart_set_series_value_by_id(traffic_chart, traffic_upload_series,
-			(upload_start + 59U) % 60U,
-			(int32_t)(traffic_display_upload / 1024.0));
-	}
+	return NULL;
+}
+
+static void set_page_visible(lv_obj_t *page, bool visible)
+{
+	bool hidden = lv_obj_has_flag(page, LV_OBJ_FLAG_HIDDEN);
+	if (visible && hidden)
+		lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
+	else if (!visible && !hidden)
+		lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void place_pages(int32_t offset)
 {
+	int transition_delta = offset < 0 ? 1 : offset > 0 ? -1 : pending_page_delta;
+	int neighbour = -1;
+	if (transition_delta) {
+		int candidate = (int)current_screen_index + transition_delta;
+		if (app_config.swipe_loop)
+			neighbour = (candidate + (int)screen_count) % (int)screen_count;
+		else if (candidate >= 0 && candidate < (int)screen_count)
+			neighbour = candidate;
+	}
 	for (unsigned int index = 0; index < screen_count; ++index) {
-		int difference = (int)index - (int)current_screen_index;
-		if (app_config.swipe_loop && screen_count == 2 && index != current_screen_index)
-			difference = offset > 0 ? -1 : 1;
-		else if (app_config.swipe_loop && screen_count > 2) {
-			int half = (int)screen_count / 2;
-			if (difference > half)
-				difference -= (int)screen_count;
-			else if (difference < -half)
-				difference += (int)screen_count;
-		}
-		lv_obj_set_pos(screens[index], difference * 284 + offset, 0);
+		bool current = index == current_screen_index;
+		bool adjacent = (int)index == neighbour;
+		set_page_visible(screens[index], current || adjacent);
+		if (!current && !adjacent)
+			continue;
+		int32_t x = current ? offset : offset + transition_delta * 284;
+		if (lv_obj_get_x(screens[index]) != x)
+			lv_obj_set_x(screens[index], x);
 	}
 }
 
@@ -443,6 +465,7 @@ static void page_animation_complete(lv_anim_t *animation)
 		current_screen_index = (current_screen_index + screen_count - 1U) % screen_count;
 	pending_page_delta = 0;
 	drag_offset = 0;
+	drag_moved = false;
 	page_animation_running = false;
 	place_pages(0);
 }
@@ -487,7 +510,7 @@ static void page_drag_event(lv_event_t *event)
 		int32_t horizontal = point.x - drag_start_point.x;
 		int32_t vertical = point.y - drag_start_point.y;
 		if (!drag_moved) {
-			if (abs(horizontal) < 6 || abs(horizontal) <= abs(vertical))
+			if (abs(horizontal) < 12 || abs(horizontal) <= abs(vertical))
 				return;
 			drag_moved = true;
 		}
@@ -567,12 +590,12 @@ static lv_obj_t *build_clock_screen(lv_obj_t *parent)
 	lv_obj_set_style_bg_color(accent, colour(app_config.accent_colour), 0);
 	lv_obj_clear_flag(accent, LV_OBJ_FLAG_SCROLLABLE);
 
-	clock_label = create_label(screen, "--:--", 28, 9, &lv_font_montserrat_28,
+	clock_label = create_label(screen, "--:--", 28, 11, &lv_font_montserrat_28,
 		app_config.primary_colour);
 	lv_obj_set_width(clock_label, 246);
 	lv_obj_set_style_text_align(clock_label, LV_TEXT_ALIGN_LEFT, 0);
 	lv_obj_set_style_text_letter_space(clock_label, -1, 0);
-	date_label = create_label(screen, "---- -- --", 28, 46, small_ui_font(),
+	date_label = create_label(screen, "---- -- --", 28, 48, small_ui_font(),
 		app_config.primary_colour);
 	lv_obj_set_width(date_label, 246);
 	lv_obj_set_style_text_align(date_label, LV_TEXT_ALIGN_LEFT, 0);
@@ -633,8 +656,10 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 		lv_obj_set_width(traffic_upload_label, 110);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
-		traffic_source_label = create_label(screen, "NSS", 246, 1,
+		traffic_source_label = create_label(screen, "NSS", 202, 1,
 			&lv_font_montserrat_14, app_config.accent_colour);
+		lv_obj_set_width(traffic_source_label, 76);
+		lv_obj_set_style_text_align(traffic_source_label, LV_TEXT_ALIGN_RIGHT, 0);
 		traffic_chart = lv_chart_create(screen);
 		lv_obj_set_pos(traffic_chart, 134, 15);
 		lv_obj_set_size(traffic_chart, 145, 56);
@@ -709,6 +734,35 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	return screen;
 }
 
+static void update_wifi_band_display(unsigned int band, const struct wifi_info *wifi)
+{
+	if (band >= 2 || !wifi_band_rows[band] || !wifi)
+		return;
+	char text[160];
+	if (!wifi->enabled) {
+		set_label_text_if_changed(wifi_ssid_labels[band], "OFF");
+		set_label_text_if_changed(wifi_password_labels[band], "");
+		lv_obj_set_style_text_color(wifi_ssid_labels[band],
+			colour(app_config.secondary_colour), 0);
+		return;
+	}
+	set_label_text_if_changed(wifi_ssid_labels[band], wifi->ssid[0] ? wifi->ssid : "--");
+	lv_obj_set_style_text_color(wifi_ssid_labels[band],
+		colour(app_config.primary_colour), 0);
+	if (app_config.password_mode == SCREENPLUS_PASSWORD_HIDDEN)
+		strcpy(text, "KEY ********");
+	else if (!wifi->password[0])
+		strcpy(text, "KEY OPEN");
+	else if (app_config.password_mode == SCREENPLUS_PASSWORD_VISIBLE ||
+		 password_revealed[band])
+		snprintf(text, sizeof(text), "KEY %s", wifi->password);
+	else if (app_config.password_mode == SCREENPLUS_PASSWORD_QR)
+		strcpy(text, "KEY QR CODE");
+	else
+		strcpy(text, "KEY TAP TO SHOW");
+	set_label_text_if_changed(wifi_password_labels[band], text);
+}
+
 static void password_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
@@ -724,8 +778,10 @@ static void password_event(lv_event_t *event)
 		if (ready)
 			snapshot = latest_snapshot;
 		pthread_mutex_unlock(&snapshot_mutex);
-		if (!ready)
+		if (!ready) {
+			password_long_press_handled = false;
 			return;
+		}
 		const struct wifi_info *wifi = band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g;
 		if (!wifi->enabled) {
 			password_long_press_handled = false;
@@ -759,21 +815,30 @@ static void password_event(lv_event_t *event)
 		lv_screen_load(wifi_qr_screen);
 		return;
 	}
-	if (code == LV_EVENT_CLICKED && password_long_press_handled) {
+	if (code == LV_EVENT_RELEASED && password_long_press_handled) {
 		password_long_press_handled = false;
 		return;
 	}
-	if (code == LV_EVENT_CLICKED && app_config.password_mode == SCREENPLUS_PASSWORD_QR) {
+	if (code == LV_EVENT_RELEASED && app_config.password_mode == SCREENPLUS_PASSWORD_QR) {
 		if (!drag_moved)
 			lv_obj_send_event(wifi_band_rows[band], LV_EVENT_LONG_PRESSED, NULL);
 		password_long_press_handled = false;
 		return;
 	}
-	if (code == LV_EVENT_CLICKED && !drag_moved &&
+	if (code == LV_EVENT_RELEASED && !drag_moved &&
 	    app_config.password_mode == SCREENPLUS_PASSWORD_TAP) {
 		password_revealed[band] = !password_revealed[band];
 		password_reveal_deadline[band] = password_revealed[band] ?
 			monotonic_milliseconds() + 15000U : 0;
+		struct system_snapshot snapshot;
+		pthread_mutex_lock(&snapshot_mutex);
+		bool ready = snapshot_ready;
+		if (ready)
+			snapshot = latest_snapshot;
+		pthread_mutex_unlock(&snapshot_mutex);
+		if (ready)
+			update_wifi_band_display(band,
+				band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g);
 		applied_snapshot_generation = 0;
 	}
 }
@@ -784,6 +849,7 @@ static void close_wifi_qr(lv_event_t *event)
 	    lv_event_get_code(event) != LV_EVENT_GESTURE)
 		return;
 	(void)qr_wifi_band;
+	password_long_press_handled = false;
 	lv_screen_load(dashboard_screen);
 	place_pages(0);
 }
@@ -833,6 +899,9 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_set_width(wifi_password_labels[band], 221);
 	lv_label_set_long_mode(wifi_ssid_labels[band], LV_LABEL_LONG_DOT);
 	lv_label_set_long_mode(wifi_password_labels[band], LV_LABEL_LONG_DOT);
+	lv_obj_clear_flag(wifi_band_titles[band], LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_clear_flag(wifi_ssid_labels[band], LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_clear_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_add_event_cb(row, password_event, LV_EVENT_ALL, (void *)(uintptr_t)band);
 }
 
@@ -952,33 +1021,8 @@ static void apply_system_snapshot(lv_timer_t *timer)
 	}
 
 	const struct wifi_info *wifi_bands[2] = { &snapshot.wifi_2g, &snapshot.wifi_5g };
-	for (unsigned int band = 0; band < 2; ++band) {
-		if (!wifi_band_rows[band])
-			continue;
-		const struct wifi_info *wifi = wifi_bands[band];
-		if (!wifi->enabled) {
-			set_label_text_if_changed(wifi_ssid_labels[band], "OFF");
-			set_label_text_if_changed(wifi_password_labels[band], "");
-			lv_obj_set_style_text_color(wifi_ssid_labels[band],
-				colour(app_config.secondary_colour), 0);
-			continue;
-		}
-		set_label_text_if_changed(wifi_ssid_labels[band], wifi->ssid[0] ? wifi->ssid : "--");
-		lv_obj_set_style_text_color(wifi_ssid_labels[band],
-			colour(app_config.primary_colour), 0);
-		if (app_config.password_mode == SCREENPLUS_PASSWORD_HIDDEN)
-			strcpy(text, "KEY ********");
-		else if (!wifi->password[0])
-			strcpy(text, "KEY OPEN");
-		else if (app_config.password_mode == SCREENPLUS_PASSWORD_VISIBLE ||
-			 password_revealed[band])
-			snprintf(text, sizeof(text), "KEY %s", wifi->password);
-		else if (app_config.password_mode == SCREENPLUS_PASSWORD_QR)
-			strcpy(text, "KEY QR CODE");
-		else
-			strcpy(text, "KEY TAP TO SHOW");
-		set_label_text_if_changed(wifi_password_labels[band], text);
-	}
+	for (unsigned int band = 0; band < 2; ++band)
+		update_wifi_band_display(band, wifi_bands[band]);
 
 	if (openclash_state_label) {
 		unsigned int openclash_hex = state_colour(snapshot.openclash.state);
@@ -1082,15 +1126,12 @@ static void build_ui(void)
 	place_pages(0);
 	lv_screen_load(dashboard_screen);
 	lv_timer_create(update_clock, 250, NULL);
-	metrics_state_initialize(&metric_state);
-	lv_timer_create(update_metrics, 500, NULL);
-	lv_timer_create(animate_traffic_numbers, 32, NULL);
+	lv_timer_create(apply_metrics, 100, NULL);
 	lv_timer_create(apply_system_snapshot, 500, NULL);
 	lv_timer_create(manage_idle_state, 250, NULL);
 	if (app_config.auto_carousel)
 		lv_timer_create(auto_carousel, app_config.carousel_interval_seconds * 1000U, NULL);
 	update_clock(NULL);
-	update_metrics(NULL);
 }
 
 static int parse_integer(const char *text, int minimum, int maximum, const char *name)
@@ -1231,6 +1272,7 @@ int main(int argc, char **argv)
 		       "\"disk_write_bytes_per_second\":%.2f,"
 		       "\"network_interface\":\"%s\","
 		       "\"network_hardware_accelerated\":%s,"
+		       "\"network_acceleration\":\"%s\","
 		       "\"network_receive_bytes_per_second\":%.2f,"
 		       "\"network_transmit_bytes_per_second\":%.2f,"
 		       "\"uptime_seconds\":%llu}\n",
@@ -1242,6 +1284,7 @@ int main(int argc, char **argv)
 		       metrics.disk_read_bytes_per_second, metrics.disk_write_bytes_per_second,
 		       metrics.network_interface,
 		       metrics.network_hardware_accelerated ? "true" : "false",
+		       metrics_acceleration_text(metrics.network_acceleration),
 		       metrics.network_receive_bytes_per_second,
 		       metrics.network_transmit_bytes_per_second,
 		       (unsigned long long)metrics.uptime_seconds);
@@ -1319,6 +1362,11 @@ int main(int argc, char **argv)
 	backlight_on = false;
 	set_backlight(true);
 	build_ui();
+	metrics_state_initialize(&metric_state);
+	if (pthread_create(&metrics_worker_thread, NULL, metrics_worker, NULL) == 0)
+		metrics_worker_started = true;
+	else
+		fputs("screenplus: failed to start metrics worker\n", stderr);
 	system_info_state_initialize(&system_state);
 	if (pthread_create(&system_worker_thread, NULL, system_worker, NULL) == 0)
 		system_worker_started = true;
@@ -1346,6 +1394,8 @@ int main(int argc, char **argv)
 	}
 
 	running = 0;
+	if (metrics_worker_started)
+		pthread_join(metrics_worker_thread, NULL);
 	if (system_worker_started)
 		pthread_join(system_worker_thread, NULL);
 	lv_deinit();

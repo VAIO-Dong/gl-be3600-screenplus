@@ -198,20 +198,72 @@ static int read_counter_file(const char *path, uint64_t *value)
 }
 
 static int read_network_bytes(char *interface, unsigned int size,
-			      uint64_t *receive, uint64_t *transmit,
-			      int *hardware_accelerated)
+			      uint64_t *receive, uint64_t *transmit)
 {
 	if (find_default_interface(interface, size) != 0)
 		strncpy(interface, "eth0", size - 1);
 	interface[size - 1] = '\0';
-	*hardware_accelerated = access("/sys/module/qca_nss_dp", F_OK) == 0 &&
-		(strncmp(interface, "eth", 3) == 0 || strncmp(interface, "wan", 3) == 0);
 	char path[256];
 	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/rx_bytes", interface);
 	if (read_counter_file(path, receive) != 0)
 		return -1;
 	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/tx_bytes", interface);
 	return read_counter_file(path, transmit);
+}
+
+static bool config_option_enabled(const char *path, const char *option)
+{
+	FILE *file = fopen(path, "r");
+	if (!file)
+		return false;
+	bool enabled = false;
+	char line[256];
+	while (fgets(line, sizeof(line), file)) {
+		char key[64] = {0};
+		char value[32] = {0};
+		if (sscanf(line, " option %63s %31s", key, value) != 2 ||
+		    strcmp(key, option) != 0)
+			continue;
+		size_t length = strlen(value);
+		if (length >= 2 && (value[0] == '\'' || value[0] == '"')) {
+			memmove(value, value + 1, length);
+			value[length - 2] = '\0';
+		}
+		enabled = strcmp(value, "1") == 0 || strcmp(value, "on") == 0 ||
+			strcmp(value, "true") == 0;
+	}
+	fclose(file);
+	return enabled;
+}
+
+static bool acceleration_front_end_active(void)
+{
+	uint64_t stop = 0;
+	bool ipv4_active = read_counter_file(
+		"/sys/kernel/debug/ecm/front_end_ipv4_stop", &stop) != 0 || stop == 0;
+	if (read_counter_file("/sys/kernel/debug/ecm/gl_front_end_ipv4_stop", &stop) == 0 && stop)
+		ipv4_active = false;
+	bool ipv6_active = read_counter_file(
+		"/sys/kernel/debug/ecm/front_end_ipv6_stop", &stop) != 0 || stop == 0;
+	if (read_counter_file("/sys/kernel/debug/ecm/gl_front_end_ipv6_stop", &stop) == 0 && stop)
+		ipv6_active = false;
+	return ipv4_active || ipv6_active;
+}
+
+static enum network_acceleration_mode detect_network_acceleration(void)
+{
+	bool ecm_active = access("/sys/module/ecm", F_OK) == 0 &&
+		acceleration_front_end_active();
+	if (ecm_active && access("/sys/module/qca_nss_ppe", F_OK) == 0)
+		return NETWORK_ACCELERATION_NSS;
+	if (ecm_active && access("/sys/module/qca_nss_sfe", F_OK) == 0)
+		return NETWORK_ACCELERATION_SOFTWARE;
+	if (config_option_enabled("/etc/config/firewall", "flow_offloading_hw") &&
+	    access("/sys/module/qca_nss_dp", F_OK) == 0)
+		return NETWORK_ACCELERATION_NSS;
+	if (config_option_enabled("/etc/config/firewall", "flow_offloading"))
+		return NETWORK_ACCELERATION_SOFTWARE;
+	return NETWORK_ACCELERATION_OFF;
 }
 
 static double read_temperature(void)
@@ -285,9 +337,11 @@ int metrics_sample(struct metrics_state *state, struct system_metrics *metrics)
 		errors++;
 	if (read_disk_bytes(&disk_read, &disk_write) != 0)
 		errors++;
-	if (read_network_bytes(interface, sizeof(interface), &network_receive, &network_transmit,
-		&metrics->network_hardware_accelerated) != 0)
+	if (read_network_bytes(interface, sizeof(interface), &network_receive, &network_transmit) != 0)
 		errors++;
+	metrics->network_acceleration = detect_network_acceleration();
+	metrics->network_hardware_accelerated =
+		metrics->network_acceleration == NETWORK_ACCELERATION_NSS;
 
 	double elapsed = state->sampled_milliseconds && now > state->sampled_milliseconds ?
 		(double)(now - state->sampled_milliseconds) / 1000.0 : 0.0;
@@ -333,4 +387,13 @@ void metrics_format_rate(double bytes_per_second, char *buffer, unsigned int siz
 		snprintf(buffer, size, "%.1fM", bytes_per_second / (1024.0 * 1024.0));
 	else
 		snprintf(buffer, size, "%.1fG", bytes_per_second / (1024.0 * 1024.0 * 1024.0));
+}
+
+const char *metrics_acceleration_text(enum network_acceleration_mode mode)
+{
+	switch (mode) {
+	case NETWORK_ACCELERATION_NSS: return "NSS";
+	case NETWORK_ACCELERATION_SOFTWARE: return "SW ACC";
+	default: return "ACC OFF";
+	}
 }

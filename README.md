@@ -9,7 +9,8 @@ behaviour through LuCI.
 
 - Home: left-aligned time, date and weekday beside a high-contrast accent rule.
 - System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
-- Traffic: smoothly interpolated upload/download rates and a 30-second graph.
+- Traffic: stable sampled upload/download rates, acceleration status and a
+  30-second graph.
 - Network: both physical Ethernet ports plus Wi-Fi state.
 - Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
   shown as off.
