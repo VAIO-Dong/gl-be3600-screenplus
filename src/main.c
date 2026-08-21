@@ -112,6 +112,8 @@ static bool snapshot_ready;
 static uint64_t snapshot_generation;
 static uint64_t applied_snapshot_generation;
 static bool password_revealed[2];
+static bool wifi_touch_active;
+static unsigned int wifi_touch_band;
 static bool password_long_press_handled;
 static uint32_t password_reveal_deadline[2];
 static unsigned int qr_wifi_band;
@@ -638,6 +640,8 @@ static void page_drag_event(lv_event_t *event)
 				return;
 			drag_moved = true;
 		}
+		/* A page drag owns the gesture; never let it age into a long press. */
+		lv_indev_reset_long_press(input);
 		if (!app_config.swipe_loop &&
 		    ((current_screen_index == 0 && horizontal > 0) ||
 		     (current_screen_index + 1U == screen_count && horizontal < 0)))
@@ -905,90 +909,106 @@ static void update_wifi_band_display(unsigned int band, const struct wifi_info *
 	set_label_text_if_changed(wifi_password_labels[band], text);
 }
 
-static void password_event(lv_event_t *event)
+static bool show_wifi_qr(unsigned int band)
+{
+	if (band >= 2 || app_config.password_mode == SCREENPLUS_PASSWORD_HIDDEN)
+		return false;
+	struct system_snapshot snapshot;
+	pthread_mutex_lock(&snapshot_mutex);
+	bool ready = snapshot_ready;
+	if (ready)
+		snapshot = latest_snapshot;
+	pthread_mutex_unlock(&snapshot_mutex);
+	if (!ready)
+		return false;
+	const struct wifi_info *wifi = band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g;
+	if (!wifi->enabled)
+		return false;
+	char escaped_ssid[SCREENPLUS_TEXT_MEDIUM * 2];
+	char escaped_password[SCREENPLUS_TEXT_MEDIUM * 2];
+	size_t ssid_used = 0;
+	size_t password_used = 0;
+	for (const char *source = wifi->ssid;
+	     *source && ssid_used + 2 < sizeof(escaped_ssid); ++source) {
+		if (strchr("\\;,:\"", *source))
+			escaped_ssid[ssid_used++] = '\\';
+		escaped_ssid[ssid_used++] = *source;
+	}
+	escaped_ssid[ssid_used] = '\0';
+	for (const char *source = wifi->password;
+	     *source && password_used + 2 < sizeof(escaped_password); ++source) {
+		if (strchr("\\;,:\"", *source))
+			escaped_password[password_used++] = '\\';
+		escaped_password[password_used++] = *source;
+	}
+	escaped_password[password_used] = '\0';
+	char payload[448];
+	if (wifi->password[0])
+		snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;;",
+			escaped_ssid, escaped_password);
+	else
+		snprintf(payload, sizeof(payload), "WIFI:T:nopass;S:%s;;", escaped_ssid);
+	lv_qrcode_set_data(wifi_qr_code, payload);
+	qr_wifi_band = band;
+	lv_screen_load(wifi_qr_screen);
+	return true;
+}
+
+static void toggle_wifi_password(unsigned int band)
+{
+	if (band >= 2 || app_config.password_mode != SCREENPLUS_PASSWORD_TAP)
+		return;
+	password_revealed[band] = !password_revealed[band];
+	password_reveal_deadline[band] = password_revealed[band] ?
+		monotonic_milliseconds() + 15000U : 0;
+	struct system_snapshot snapshot;
+	pthread_mutex_lock(&snapshot_mutex);
+	bool ready = snapshot_ready;
+	if (ready)
+		snapshot = latest_snapshot;
+	pthread_mutex_unlock(&snapshot_mutex);
+	if (ready)
+		update_wifi_band_display(band,
+			band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g);
+	applied_snapshot_generation = 0;
+}
+
+static void wifi_touch_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
-	lv_obj_t *target = lv_event_get_current_target_obj(event);
-	unsigned int band;
-	if (target == wifi_band_rows[0])
-		band = 0;
-	else if (target == wifi_band_rows[1])
-		band = 1;
-	else
-		return;
-	if (code == LV_EVENT_LONG_PRESSED &&
-	    app_config.password_mode != SCREENPLUS_PASSWORD_HIDDEN) {
-		password_long_press_handled = true;
-		struct system_snapshot snapshot;
-		pthread_mutex_lock(&snapshot_mutex);
-		bool ready = snapshot_ready;
-		if (ready)
-			snapshot = latest_snapshot;
-		pthread_mutex_unlock(&snapshot_mutex);
-		if (!ready) {
-			password_long_press_handled = false;
+	lv_indev_t *input = lv_indev_active();
+	if (code == LV_EVENT_PRESSED) {
+		wifi_touch_active = false;
+		password_long_press_handled = false;
+		if (!input)
 			return;
-		}
-		const struct wifi_info *wifi = band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g;
-		if (!wifi->enabled) {
-			password_long_press_handled = false;
-			return;
-		}
-		char escaped_ssid[SCREENPLUS_TEXT_MEDIUM * 2];
-		char escaped_password[SCREENPLUS_TEXT_MEDIUM * 2];
-		size_t ssid_used = 0;
-		size_t password_used = 0;
-		for (const char *source = wifi->ssid; *source && ssid_used + 2 < sizeof(escaped_ssid); ++source) {
-			if (strchr("\\;,:\"", *source))
-				escaped_ssid[ssid_used++] = '\\';
-			escaped_ssid[ssid_used++] = *source;
-		}
-		escaped_ssid[ssid_used] = '\0';
-		for (const char *source = wifi->password;
-		     *source && password_used + 2 < sizeof(escaped_password); ++source) {
-			if (strchr("\\;,:\"", *source))
-				escaped_password[password_used++] = '\\';
-			escaped_password[password_used++] = *source;
-		}
-		escaped_password[password_used] = '\0';
-		char payload[448];
-		if (wifi->password[0])
-			snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;;",
-				escaped_ssid, escaped_password);
-		else
-			snprintf(payload, sizeof(payload), "WIFI:T:nopass;S:%s;;", escaped_ssid);
-		lv_qrcode_set_data(wifi_qr_code, payload);
-		qr_wifi_band = band;
-		lv_screen_load(wifi_qr_screen);
+		lv_point_t point;
+		lv_indev_get_point(input, &point);
+		wifi_touch_band = point.y >= 38 ? 1U : 0U;
+		wifi_touch_active = wifi_band_rows[wifi_touch_band] != NULL;
 		return;
 	}
-	if (code == LV_EVENT_RELEASED && password_long_press_handled) {
+	if (code == LV_EVENT_LONG_PRESSED) {
+		if (wifi_touch_active && drag_tracking && !drag_moved &&
+		    !page_animation_running) {
+			password_long_press_handled = show_wifi_qr(wifi_touch_band);
+			wifi_touch_active = !password_long_press_handled;
+		}
+		return;
+	}
+	if (code == LV_EVENT_PRESS_LOST) {
+		wifi_touch_active = false;
 		password_long_press_handled = false;
 		return;
 	}
-	bool tap = !drag_moved || abs(drag_offset) < 28;
-	if (code == LV_EVENT_RELEASED && app_config.password_mode == SCREENPLUS_PASSWORD_QR) {
-		if (tap)
-			lv_obj_send_event(wifi_band_rows[band], LV_EVENT_LONG_PRESSED, NULL);
-		password_long_press_handled = false;
+	if (code != LV_EVENT_RELEASED)
 		return;
-	}
-	if (code == LV_EVENT_RELEASED && tap &&
-	    app_config.password_mode == SCREENPLUS_PASSWORD_TAP) {
-		password_revealed[band] = !password_revealed[band];
-		password_reveal_deadline[band] = password_revealed[band] ?
-			monotonic_milliseconds() + 15000U : 0;
-		struct system_snapshot snapshot;
-		pthread_mutex_lock(&snapshot_mutex);
-		bool ready = snapshot_ready;
-		if (ready)
-			snapshot = latest_snapshot;
-		pthread_mutex_unlock(&snapshot_mutex);
-		if (ready)
-			update_wifi_band_display(band,
-				band == 0 ? &snapshot.wifi_2g : &snapshot.wifi_5g);
-		applied_snapshot_generation = 0;
-	}
+	bool activate = wifi_touch_active && !password_long_press_handled &&
+		!drag_moved && !page_animation_running;
+	wifi_touch_active = false;
+	password_long_press_handled = false;
+	if (activate)
+		toggle_wifi_password(wifi_touch_band);
 }
 
 static void close_wifi_qr(lv_event_t *event)
@@ -997,6 +1017,7 @@ static void close_wifi_qr(lv_event_t *event)
 	    lv_event_get_code(event) != LV_EVENT_GESTURE)
 		return;
 	(void)qr_wifi_band;
+	wifi_touch_active = false;
 	password_long_press_handled = false;
 	lv_screen_load(dashboard_screen);
 	place_pages(0);
@@ -1033,9 +1054,8 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
 	lv_obj_set_style_border_width(row, 0, 0);
 	lv_obj_set_style_pad_all(row, 0, 0);
-	lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE |
-		LV_OBJ_FLAG_GESTURE_BUBBLE);
+	lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE |
+		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
 	wifi_band_titles[band] = create_label(row, title, 8, 10,
 		ui_label_font(), app_config.accent_colour);
 	wifi_ssid_labels[band] = create_label(row, "--", 55, 2,
@@ -1051,7 +1071,6 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_clear_flag(wifi_ssid_labels[band], LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_clear_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE |
 		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
-	lv_obj_add_event_cb(row, password_event, LV_EVENT_ALL, NULL);
 }
 
 static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
@@ -1062,6 +1081,7 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 		create_wifi_band_row(screen, 0, 0, "2.4G");
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_WIFI, "wifi_5g"))
 		create_wifi_band_row(screen, 1, 39, "5G");
+	lv_obj_add_event_cb(screen, wifi_touch_event, LV_EVENT_ALL, NULL);
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }

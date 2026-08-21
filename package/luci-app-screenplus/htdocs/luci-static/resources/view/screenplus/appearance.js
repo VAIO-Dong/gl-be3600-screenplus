@@ -9,7 +9,8 @@ var WIDTH = 284;
 var HEIGHT = 76;
 
 function validateColour(section, value) {
-	return /^#[0-9a-fA-F]{6}$/.test(value) || _('Enter a colour as #RRGGBB.');
+	return value == null || value === '' || /^#[0-9a-fA-F]{6}$/.test(value) ||
+		_('Enter a colour as #RRGGBB.');
 }
 
 function convertImage(file) {
@@ -201,7 +202,7 @@ return view.extend({
 
 	render: function() {
 		var map = new form.Map('screenplus', _('Appearance'),
-			_('Theme, primary and secondary colours define the visual hierarchy. Healthy states reuse the theme colour and missing connections reuse the secondary colour. The remaining state colours are only used for their named conditions. Changes apply when the service reloads.'));
+			_('Theme, primary and secondary colours define the visual hierarchy. Healthy states reuse the theme colour and missing connections reuse the secondary colour. The remaining state colours are only used for their named conditions. Leave a value empty to restore its built-in default. Changes apply when the service reloads.'));
 		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Theme'));
 		section.anonymous = true;
 		section.addremove = false;
@@ -211,56 +212,56 @@ return view.extend({
 
 		var option = section.taboption('palette', form.Value, 'accent', _('Theme colour'));
 		option.default = '#37f59a';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Page headings, the home accent, enabled switches, download graphs and healthy or active states.');
 
 		option = section.taboption('palette', form.Value, 'primary', _('Primary colour'));
 		option.default = '#ffffff';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Clock, main values, addresses, SSIDs, passwords and other high-priority content.');
 
 		option = section.taboption('palette', form.Value, 'secondary', _('Secondary colour'));
 		option.default = '#dcecff';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Supporting labels, units, upload graphs, disabled Wi-Fi and missing connections.');
 
 		option = section.taboption('palette', form.Value, 'background', _('Background colour'));
 		option.default = '#030912';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Base colour behind every page when no custom image covers it.');
 
 		option = section.taboption('palette', form.Value, 'border', _('Divider colour'));
 		option.default = '#3b424a';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Section separators and the inactive switch track.');
 
 		option = section.taboption('states', form.Value, 'standby', _('Available but disabled colour'));
 		option.default = '#4b9fff';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('A connection or device is present and configured, but disabled.');
 
 		option = section.taboption('states', form.Value, 'warning', _('Enabled but offline colour'));
 		option.default = '#ffdc55';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('A connection is enabled or linked but has no working internet access.');
 
 		option = section.taboption('states', form.Value, 'error', _('Fault colour'));
 		option.default = '#ff5c70';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('A service reports an explicit error or failed state.');
 
 		option = section.taboption('backgrounds', form.Value, 'overlay_opacity', _('Background overlay opacity'));
 		option.datatype = 'range(0,100)';
 		option.default = '35';
-		option.rmempty = false;
+		option.rmempty = true;
 		option.description = _('Percentage used when a custom background image is selected.');
 
 		option = section.taboption('backgrounds', form.ListValue, 'background_mode', _('Background image mode'));

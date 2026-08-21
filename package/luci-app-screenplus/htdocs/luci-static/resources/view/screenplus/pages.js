@@ -22,20 +22,20 @@ function addPageOrder(map) {
 	var section = map.section(form.NamedSection, 'page_order', 'page_order', _('Page order'));
 	section.anonymous = true;
 	section.addremove = false;
-	section.description = _('Lower numbers appear first. Page visibility and content are configured below.');
+	section.description = _('Lower numbers appear first. Leave a value empty to restore its built-in default. Page visibility and content are configured below.');
 
 	[
 		[ 'home', _('Home / clock'), '10' ],
-		[ 'status', _('Device status'), '20' ],
-		[ 'traffic', _('Network traffic'), '25' ],
-		[ 'network', _('Network'), '30' ],
-		[ 'wifi', _('Wi-Fi credentials'), '40' ],
-		[ 'openclash', _('OpenClash'), '50' ]
+		[ 'traffic', _('Network traffic'), '20' ],
+		[ 'wifi', _('Wi-Fi credentials'), '30' ],
+		[ 'network', _('LAN / WAN connections'), '40' ],
+		[ 'status', _('Device status'), '50' ],
+		[ 'openclash', _('OpenClash'), '60' ]
 	].forEach(function(page) {
 		var option = section.option(form.Value, page[0], page[1]);
 		option.datatype = 'range(0,999)';
 		option.default = page[2];
-		option.rmempty = false;
+		option.rmempty = true;
 	});
 }
 
@@ -53,16 +53,15 @@ return view.extend({
 			[ 'weekday', _('Weekday') ],
 			[ 'timezone', _('Time zone') ]
 		]);
-		addPage(map, 'status', _('Device status'), [
-			[ 'cpu', _('CPU utilisation and temperature') ],
-			[ 'memory', _('Memory utilisation and used space') ],
-			[ 'fan', _('Fan speed') ]
-		]);
 		addPage(map, 'traffic', _('Network traffic'), [
 			[ 'rates', _('Live upload and download rates') ],
 			[ 'history', _('30-second traffic history') ]
 		]);
-		addPage(map, 'network', _('Network'), [
+		addPage(map, 'wifi', _('Wi-Fi credentials'), [
+			[ 'wifi_2g', _('2.4 GHz SSID and password') ],
+			[ 'wifi_5g', _('5 GHz SSID and password') ]
+		]);
+		addPage(map, 'network', _('LAN / WAN connections'), [
 			[ 'lan', _('LAN IP address') ],
 			[ 'ethernet', _('Ethernet WAN') ],
 			[ 'repeater', _('Wi-Fi repeater WAN') ],
@@ -70,9 +69,10 @@ return view.extend({
 			[ 'cellular', _('Cellular WAN') ],
 			[ 'wan_detail', _('Active WAN address') ]
 		]);
-		addPage(map, 'wifi', _('Wi-Fi credentials'), [
-			[ 'wifi_2g', _('2.4 GHz SSID and password') ],
-			[ 'wifi_5g', _('5 GHz SSID and password') ]
+		addPage(map, 'status', _('Device status'), [
+			[ 'cpu', _('CPU utilisation and temperature') ],
+			[ 'memory', _('Memory utilisation and used space') ],
+			[ 'fan', _('Fan speed') ]
 		]);
 		addPage(map, 'openclash', _('OpenClash'), [
 			[ 'rates', _('Current upload and download rates') ],

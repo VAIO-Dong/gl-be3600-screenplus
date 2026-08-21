@@ -5,7 +5,7 @@
 return view.extend({
 	render: function() {
 		var m = new form.Map('screenplus', _('ScreenPlus'),
-			_('Direct touchscreen dashboard for the GL-BE3600.'));
+			_('Direct touchscreen dashboard for the GL-BE3600. Leave a number field empty to restore its built-in default.'));
 		var s = m.section(form.NamedSection, 'main', 'screenplus', _('General'));
 		s.anonymous = true;
 		s.addremove = false;
@@ -21,6 +21,7 @@ return view.extend({
 		o = s.option(form.Value, 'brightness', _('Brightness'));
 		o.datatype = 'range(1,11)';
 		o.default = '5';
+		o.rmempty = true;
 
 		o = s.option(form.ListValue, 'rotation', _('Screen orientation'));
 		o.value('90', _('Normal'));
@@ -33,6 +34,7 @@ return view.extend({
 		o = s.option(form.Value, 'idle_timeout', _('Idle timeout'));
 		o.datatype = 'range(10,86400)';
 		o.default = '180';
+		o.rmempty = true;
 		o.depends('always_on', '0');
 		o.description = _('Seconds before the backlight turns off.');
 
@@ -51,6 +53,7 @@ return view.extend({
 		o = s.option(form.Value, 'carousel_interval', _('Carousel interval'));
 		o.datatype = 'range(3,300)';
 		o.default = '10';
+		o.rmempty = true;
 		o.depends('auto_carousel', '1');
 		o.description = _('Seconds between automatic page changes.');
 
@@ -58,8 +61,9 @@ return view.extend({
 		o.value('hidden', _('Always hidden'));
 		o.value('tap', _('Tap to reveal'));
 		o.value('visible', _('Always visible'));
-		o.value('qr', _('QR code'));
+		o.value('qr', _('QR code label'));
 		o.default = 'tap';
+		o.description = _('A stationary long press opens the QR code in every mode except Always hidden. Starting a page swipe cancels the long press.');
 
 		o = s.option(form.Flag, 'restore_official_on_remove',
 			_('Restore official screen service when uninstalling'));

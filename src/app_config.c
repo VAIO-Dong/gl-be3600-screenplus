@@ -46,7 +46,7 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	};
 	static const char *const wifi_fields[] = { "wifi_2g", "wifi_5g" };
 	static const char *const openclash_fields[] = {
-		"rates", "connections", "totals"
+		"rates", "connections", "totals", "resources"
 	};
 
 	memset(config, 0, sizeof(*config));
@@ -70,15 +70,15 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->overlay_opacity = 35;
 	set_default_page(&config->pages[SCREENPLUS_PAGE_HOME], 10,
 		home_fields, sizeof(home_fields) / sizeof(home_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_STATUS], 20,
-		status_fields, sizeof(status_fields) / sizeof(status_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_TRAFFIC], 25,
+	set_default_page(&config->pages[SCREENPLUS_PAGE_TRAFFIC], 20,
 		traffic_fields, sizeof(traffic_fields) / sizeof(traffic_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_NETWORK], 30,
-		network_fields, sizeof(network_fields) / sizeof(network_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_WIFI], 40,
+	set_default_page(&config->pages[SCREENPLUS_PAGE_WIFI], 30,
 		wifi_fields, sizeof(wifi_fields) / sizeof(wifi_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_OPENCLASH], 50,
+	set_default_page(&config->pages[SCREENPLUS_PAGE_NETWORK], 40,
+		network_fields, sizeof(network_fields) / sizeof(network_fields[0]));
+	set_default_page(&config->pages[SCREENPLUS_PAGE_STATUS], 50,
+		status_fields, sizeof(status_fields) / sizeof(status_fields[0]));
+	set_default_page(&config->pages[SCREENPLUS_PAGE_OPENCLASH], 60,
 		openclash_fields, sizeof(openclash_fields) / sizeof(openclash_fields[0]));
 }
 

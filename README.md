@@ -8,15 +8,15 @@ behaviour through LuCI.
 ## Current pages
 
 - Home: left-aligned time, date and weekday beside a high-contrast accent rule.
-- System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
 - Traffic: fixed-position rate-only fields, icon-led upload above download and
   a 30-second graph.
+- Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
+  shown as off.
 - Network: bridge-side LAN address, all four WAN sources (Ethernet, Wi-Fi
   repeater, USB tethering and cellular), plus the active WAN address. Ethernet
   is secondary-coloured with no carrier, yellow with link but no uplink and
   green only as the healthy active uplink.
-- Wi-Fi: separate 2.4 GHz and 5 GHz SSID/password rows; a disabled radio is
-  shown as off.
+- System: CPU utilisation/temperature, memory utilisation/used space and fan RPM.
 - OpenClash: a three-row equal-column grid with a top-right service switch,
   state, compact live-rate/total fields, active connections, CPU and memory
   usage.
@@ -26,7 +26,8 @@ secondary, background and divider colours define its visual hierarchy. Healthy
 states reuse the theme colour and missing connections reuse the secondary
 colour; available-but-disabled, offline and fault states remain independently
 configurable. Browser-cropped custom backgrounds apply immediately and can be
-global or page-specific.
+global or page-specific. Optional number, order and colour fields fall back to
+their built-in defaults when left empty.
 
 ## Target
 
@@ -50,8 +51,8 @@ ScreenPlus stops and disables `gl_screen` but does not remove it, so uninstall
 can restore the official service. The package also registers `ScreenPlus` in
 GL.iNet's native Toggle settings; the physical switch can move between
 ScreenPlus and the official screen service. Existing prototype configurations
-are migrated idempotently to schema v10 while preserving compatible page
-enable/order settings and uploaded backgrounds.
+are migrated idempotently to schema v11 while preserving compatible page
+visibility, field and uploaded-background settings.
 
 On Qualcomm NSS builds, traffic is read from the default NSS data-plane
 netdevice counters. This keeps ECM/PPE hardware acceleration enabled. Other

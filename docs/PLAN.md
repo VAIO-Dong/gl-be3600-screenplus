@@ -9,16 +9,16 @@ process. The official package remains installed for rollback.
 The screen model has six independently enabled and ordered pages:
 
 1. Home: time, optional seconds, date, weekday and timezone.
-2. System: CPU utilisation/temperature, memory utilisation/used space and fan
-   RPM.
-3. Traffic: fixed-position icon-led rate fields plus a 30-point/30-second
+2. Traffic: fixed-position icon-led rate fields plus a 30-point/30-second
    history graph; acceleration status remains available in diagnostics.
+3. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
+   and QR policies.
 4. Network: bridge-side LAN address, Ethernet/Wi-Fi repeater/USB
    tethering/cellular WAN states and the active WAN address. Ethernet state is
    carrier-aware: no cable inherits secondary text, link without uplink is
    yellow, and the healthy active uplink is green.
-5. Wi-Fi: separate 2.4/5 GHz SSID and password rows, with hidden, tap, visible
-   and QR policies.
+5. System: CPU utilisation/temperature, memory utilisation/used space and fan
+   RPM.
 6. OpenClash: a three-row grid with a top-right asynchronous service switch,
    equal-width state, compact merged rate/total, connection, CPU and memory
    cells.
@@ -67,7 +67,7 @@ status for both the compact network page and diagnostics.
   only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v10 migration preserves compatible settings and renames
+- Idempotent schema-v11 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
