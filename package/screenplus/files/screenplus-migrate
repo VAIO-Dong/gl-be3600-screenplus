@@ -2,7 +2,7 @@
 
 # Idempotent migration through the default-fallback and page-order schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "11" ] && exit 0
+[ "$schema_version" = "14" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -11,8 +11,8 @@ get_or_default() {
 
 migrate_page_order() {
 	uci set screenplus.page_order=page_order
-	for page_default in 'home 10' 'traffic 20' 'wifi 30' \
-		'network 40' 'status 50' 'openclash 60'; do
+	for page_default in 'home 10' 'traffic 20' 'status 30' \
+		'wifi 40' 'network 50' 'openclash 60'; do
 		set -- $page_default
 		order="$(uci -q get "screenplus.page_order.$1")"
 		[ -n "$order" ] || order="$(get_or_default "screenplus.$1.order" "$2")"
@@ -21,14 +21,14 @@ migrate_page_order() {
 	done
 }
 
-set_schema_11_page_order() {
+clear_builtin_page_order_values() {
 	uci set screenplus.page_order=page_order
-	uci set screenplus.page_order.home=10
-	uci set screenplus.page_order.traffic=20
-	uci set screenplus.page_order.wifi=30
-	uci set screenplus.page_order.network=40
-	uci set screenplus.page_order.status=50
-	uci set screenplus.page_order.openclash=60
+	for page_default in 'home 10' 'traffic 20' 'status 30' \
+		'wifi 40' 'network 50' 'openclash 60'; do
+		set -- $page_default
+		value="$(uci -q get "screenplus.page_order.$1")"
+		[ "$value" = "$2" ] && uci -q delete "screenplus.page_order.$1"
+	done
 }
 
 bind_existing_backgrounds() {
@@ -61,16 +61,38 @@ add_openclash_resources() {
 	esac
 }
 
+add_traffic_connections() {
+	fields="$(uci -q get screenplus.traffic.field)"
+	case " $fields " in
+		*" connections "*) ;;
+		*) uci add_list screenplus.traffic.field=connections ;;
+	esac
+}
+
 finish_migration() {
+	uci -q delete screenplus.main.restore_official_on_remove
 	uci -q delete screenplus.appearance.surface
 	uci -q delete screenplus.appearance.absent
 	migrate_divider_colour
 	add_openclash_resources
-	set_schema_11_page_order
-	uci set screenplus.main.schema_version=11
+	add_traffic_connections
+	clear_builtin_page_order_values
+	uci set screenplus.main.schema_version=14
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "13" ]; then
+	finish_migration
+fi
+
+if [ "$schema_version" = "12" ]; then
+	finish_migration
+fi
+
+if [ "$schema_version" = "11" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "10" ]; then
 	finish_migration

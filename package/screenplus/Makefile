@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=screenplus
-PKG_VERSION:=0.1.0
+PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_SOURCE_PROTO:=git
@@ -15,7 +15,9 @@ define Package/screenplus
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Touchscreen dashboard for GL-BE3600
-  DEPENDS:=+libc
+  DEPENDS:=+libc +luci-base
+  PROVIDES:=luci-app-screenplus
+  CONFLICTS:=luci-app-screenplus
 endef
 
 define Package/screenplus/description
@@ -59,6 +61,15 @@ define Package/screenplus/install
 	$(INSTALL_CONF) ./files/screenplus.config $(1)/etc/config/screenplus
 	$(INSTALL_DIR) $(1)/etc/gl-switch.d
 	$(INSTALL_BIN) ./files/ScreenPlus.sh $(1)/etc/gl-switch.d/screenplus.sh
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ../luci-app-screenplus/root/usr/share/luci/menu.d/luci-app-screenplus.json \
+		$(1)/usr/share/luci/menu.d/luci-app-screenplus.json
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ../luci-app-screenplus/root/usr/share/rpcd/acl.d/luci-app-screenplus.json \
+		$(1)/usr/share/rpcd/acl.d/luci-app-screenplus.json
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/screenplus
+	$(INSTALL_DATA) ../luci-app-screenplus/htdocs/luci-static/resources/view/screenplus/*.js \
+		$(1)/www/luci-static/resources/view/screenplus/
 endef
 
 define Package/screenplus/postinst
@@ -76,6 +87,8 @@ fi
 	logger -t screenplus "native Toggle frontend patch was not applied"
 /etc/init.d/screenplus enable
 /etc/init.d/screenplus start
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+/etc/init.d/rpcd restart 2>/dev/null
 if [ "$$(uci -q get switch-button.@main[0].func)" = "screenplus" ] && \
    [ -x /etc/init.d/gl_switch_button_check ]; then
 	/etc/init.d/gl_switch_button_check start 2>/dev/null
@@ -102,12 +115,12 @@ define Package/screenplus/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 [ "$${PKG_UPGRADE}" = "1" ] && exit 0
-restore="$$(uci -q get screenplus.main.restore_official_on_remove)"
-[ -n "$${restore}" ] || restore=1
-if [ "$${restore}" = "1" ] && [ -x /etc/init.d/gl_screen ]; then
+if [ -x /etc/init.d/gl_screen ]; then
 	/etc/init.d/gl_screen enable
 	/etc/init.d/gl_screen start
 fi
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+/etc/init.d/rpcd restart 2>/dev/null
 exit 0
 endef
 

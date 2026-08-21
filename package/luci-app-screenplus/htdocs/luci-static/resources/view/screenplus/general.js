@@ -65,10 +65,6 @@ return view.extend({
 		o.default = 'tap';
 		o.description = _('A stationary long press opens the QR code in every mode except Always hidden. Starting a page swipe cancels the long press.');
 
-		o = s.option(form.Flag, 'restore_official_on_remove',
-			_('Restore official screen service when uninstalling'));
-		o.default = o.enabled;
-
 		return m.render();
 	}
 });

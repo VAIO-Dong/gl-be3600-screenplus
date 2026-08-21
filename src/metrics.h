@@ -25,6 +25,7 @@ struct system_metrics {
 	double disk_write_bytes_per_second;
 	double network_receive_bytes_per_second;
 	double network_transmit_bytes_per_second;
+	unsigned int network_connection_count;
 	uint64_t network_receive_total_bytes;
 	uint64_t network_transmit_total_bytes;
 	int network_hardware_accelerated;

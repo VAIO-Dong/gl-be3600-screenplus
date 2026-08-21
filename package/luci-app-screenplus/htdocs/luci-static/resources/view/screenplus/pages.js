@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require uci';
 
 function addPage(map, name, title, fields) {
 	var section = map.section(form.NamedSection, name, 'page', title);
@@ -19,27 +20,40 @@ function addPage(map, name, title, fields) {
 }
 
 function addPageOrder(map) {
+	var defaults = [
+		[ 'home', _('Home / clock'), '10' ],
+		[ 'traffic', _('Network traffic'), '20' ],
+		[ 'status', _('Device status'), '30' ],
+		[ 'wifi', _('Wi-Fi credentials'), '40' ],
+		[ 'network', _('LAN / WAN connections'), '50' ],
+		[ 'openclash', _('OpenClash'), '60' ]
+	];
 	var section = map.section(form.NamedSection, 'page_order', 'page_order', _('Page order'));
 	section.anonymous = true;
 	section.addremove = false;
 	section.description = _('Lower numbers appear first. Leave a value empty to restore its built-in default. Page visibility and content are configured below.');
 
-	[
-		[ 'home', _('Home / clock'), '10' ],
-		[ 'traffic', _('Network traffic'), '20' ],
-		[ 'wifi', _('Wi-Fi credentials'), '30' ],
-		[ 'network', _('LAN / WAN connections'), '40' ],
-		[ 'status', _('Device status'), '50' ],
-		[ 'openclash', _('OpenClash'), '60' ]
-	].forEach(function(page) {
+	defaults.forEach(function(page) {
 		var option = section.option(form.Value, page[0], page[1]);
 		option.datatype = 'range(0,999)';
-		option.default = page[2];
+		option.placeholder = page[2];
 		option.rmempty = true;
 	});
 }
 
 return view.extend({
+	load: function() {
+		return uci.load('screenplus').then(function() {
+			/*
+			 * A NamedSection cannot render or save if an older installation is
+			 * missing the section. Create only the section shell here; empty
+			 * values deliberately remain empty and use the grey placeholders.
+			 */
+			if (!uci.get('screenplus', 'page_order'))
+				uci.add('screenplus', 'page_order', 'page_order');
+		});
+	},
+
 	render: function() {
 		var map = new form.Map('screenplus', _('Screen pages'),
 			_('Set the swipe order first, then enable pages and choose the data shown on each page.'));
@@ -55,6 +69,7 @@ return view.extend({
 		]);
 		addPage(map, 'traffic', _('Network traffic'), [
 			[ 'rates', _('Live upload and download rates') ],
+			[ 'connections', _('Current connection count') ],
 			[ 'history', _('30-second traffic history') ]
 		]);
 		addPage(map, 'wifi', _('Wi-Fi credentials'), [

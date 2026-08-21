@@ -8,12 +8,15 @@ $architecture = 'aarch64_cortex-a53_neon-vfpv4'
 $binaryPath = Join-Path $repositoryRoot 'build\prototype\screenplus'
 $outputDirectory = Join-Path $repositoryRoot 'dist'
 $outputPath = Join-Path $outputDirectory "screenplus_${version}-1_${architecture}.ipk"
-$luciOutputPath = Join-Path $outputDirectory "luci-app-screenplus_${version}-1_all.ipk"
 
 if (-not (Test-Path -LiteralPath $binaryPath)) {
     throw 'Prototype binary is missing. Run scripts/build-prototype.ps1 first.'
 }
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+Get-ChildItem -LiteralPath $outputDirectory -Filter 'screenplus_*.ipk' -File |
+    Remove-Item -Force
+Get-ChildItem -LiteralPath $outputDirectory -Filter 'luci-app-screenplus_*.ipk' -File |
+    Remove-Item -Force
 
 function Write-AsciiField {
     param(
@@ -126,7 +129,10 @@ $dataArchive = Join-Path $temporaryDirectory 'data.tar.gz'
 $controlText = @"
 Package: screenplus
 Version: $version-1
-Depends: libc
+Depends: libc, luci-base
+Provides: luci-app-screenplus
+Conflicts: luci-app-screenplus
+Replaces: luci-app-screenplus
 Source: screenplus
 Section: utils
 Architecture: $architecture
@@ -147,6 +153,7 @@ $controlEntries = @(
 New-UstarGzip $controlEntries $controlArchive
 
 $packageRoot = Join-Path $repositoryRoot 'package\screenplus\files'
+$luciRoot = Join-Path $repositoryRoot 'package\luci-app-screenplus'
 $dataEntries = @(
     @{ Name='./'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./etc'; Type='directory'; Mode=493; Content=$null },
@@ -166,8 +173,23 @@ $dataEntries = @(
 	@{ Name='./usr/share'; Type='directory'; Mode=493; Content=$null },
 	@{ Name='./usr/share/screenplus'; Type='directory'; Mode=493; Content=$null },
 	@{ Name='./usr/share/screenplus/backgrounds'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./usr/share/luci'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./usr/share/luci/menu.d'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./usr/share/luci/menu.d/luci-app-screenplus.json'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'root\usr\share\luci\menu.d\luci-app-screenplus.json')) },
+    @{ Name='./usr/share/rpcd'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./usr/share/rpcd/acl.d'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./usr/share/rpcd/acl.d/luci-app-screenplus.json'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'root\usr\share\rpcd\acl.d\luci-app-screenplus.json')) },
     @{ Name='./usr/sbin'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/sbin/screenplus'; Type='file'; Mode=493; Content=(Get-Bytes $binaryPath) }
+    @{ Name='./usr/sbin/screenplus'; Type='file'; Mode=493; Content=(Get-Bytes $binaryPath) },
+    @{ Name='./www'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./www/luci-static'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./www/luci-static/resources'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./www/luci-static/resources/view'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./www/luci-static/resources/view/screenplus'; Type='directory'; Mode=493; Content=$null },
+    @{ Name='./www/luci-static/resources/view/screenplus/general.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\general.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/pages.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\pages.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/appearance.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\appearance.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/diagnostics.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\diagnostics.js')) }
 )
 New-UstarGzip $dataEntries $dataArchive
 
@@ -183,59 +205,3 @@ $hash = Get-FileHash -LiteralPath $outputPath -Algorithm SHA256
 Write-Output ("output={0}" -f $package.FullName)
 Write-Output ("bytes={0}" -f $package.Length)
 Write-Output ("sha256={0}" -f $hash.Hash.ToLowerInvariant())
-
-$luciControlArchive = Join-Path $temporaryDirectory 'luci-control.tar.gz'
-$luciDataArchive = Join-Path $temporaryDirectory 'luci-data.tar.gz'
-$luciRoot = Join-Path $repositoryRoot 'package\luci-app-screenplus'
-$luciControlText = @"
-Package: luci-app-screenplus
-Version: $version-1
-Depends: libc, luci-base, screenplus
-Source: luci-app-screenplus
-Section: luci
-Architecture: all
-Maintainer: ScreenPlus Project
-Installed-Size: 20
-Description: LuCI configuration for ScreenPlus
-"@.Trim() + "`n"
-$luciControlEntries = @(
-    @{ Name='./'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./control'; Type='file'; Mode=420; Content=(Get-TextBytes $luciControlText) },
-    @{ Name='./postinst'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $luciRoot 'control\postinst')) },
-    @{ Name='./postrm'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $luciRoot 'control\postrm')) }
-)
-New-UstarGzip $luciControlEntries $luciControlArchive
-
-$luciDataEntries = @(
-    @{ Name='./'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share/luci'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share/luci/menu.d'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share/luci/menu.d/luci-app-screenplus.json'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'root\usr\share\luci\menu.d\luci-app-screenplus.json')) },
-    @{ Name='./usr/share/rpcd'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share/rpcd/acl.d'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./usr/share/rpcd/acl.d/luci-app-screenplus.json'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'root\usr\share\rpcd\acl.d\luci-app-screenplus.json')) },
-    @{ Name='./www'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static/resources'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static/resources/view'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static/resources/view/screenplus'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static/resources/view/screenplus/general.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\general.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/pages.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\pages.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/appearance.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\appearance.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/diagnostics.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\diagnostics.js')) }
-)
-New-UstarGzip $luciDataEntries $luciDataArchive
-$luciOuterEntries = @(
-    @{ Name='./debian-binary'; Type='file'; Mode=420; Content=(Get-TextBytes "2.0`n") },
-    @{ Name='./data.tar.gz'; Type='file'; Mode=420; Content=(Get-Bytes $luciDataArchive) },
-    @{ Name='./control.tar.gz'; Type='file'; Mode=420; Content=(Get-Bytes $luciControlArchive) }
-)
-New-UstarGzip $luciOuterEntries $luciOutputPath
-
-$luciPackage = Get-Item -LiteralPath $luciOutputPath
-$luciHash = Get-FileHash -LiteralPath $luciOutputPath -Algorithm SHA256
-Write-Output ("output={0}" -f $luciPackage.FullName)
-Write-Output ("bytes={0}" -f $luciPackage.Length)
-Write-Output ("sha256={0}" -f $luciHash.Hash.ToLowerInvariant())

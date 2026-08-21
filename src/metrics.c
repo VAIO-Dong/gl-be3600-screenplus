@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -342,6 +343,11 @@ int metrics_sample(struct metrics_state *state, struct system_metrics *metrics)
 	metrics->network_acceleration = detect_network_acceleration();
 	metrics->network_hardware_accelerated =
 		metrics->network_acceleration == NETWORK_ACCELERATION_NSS;
+	uint64_t connection_count = 0;
+	if (read_counter_file("/proc/sys/net/netfilter/nf_conntrack_count",
+	    &connection_count) == 0)
+		metrics->network_connection_count = connection_count > UINT_MAX ?
+			UINT_MAX : (unsigned int)connection_count;
 
 	double elapsed = state->sampled_milliseconds && now > state->sampled_milliseconds ?
 		(double)(now - state->sampled_milliseconds) / 1000.0 : 0.0;

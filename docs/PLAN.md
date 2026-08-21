@@ -67,7 +67,7 @@ status for both the compact network page and diagnostics.
   only for installed images.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v11 migration preserves compatible settings and renames
+- Idempotent schema-v14 migration preserves compatible settings and renames
   legacy page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
@@ -90,12 +90,11 @@ status for both the compact network page and diagnostics.
 
 ## Packaging
 
-- `screenplus`: target-specific native daemon, init script, UCI defaults and
-  constrained helpers.
-- `luci-app-screenplus`: architecture-independent LuCI views, menu and ACL.
-- Feed-compatible OpenWrt Makefiles plus a local reproducible development IPK
+- `screenplus`: one target-specific IPK containing the native daemon, init
+  script, UCI defaults, constrained helpers, LuCI views, menu and ACL.
+- A feed-compatible OpenWrt Makefile plus a local reproducible development IPK
   builder.
-- Install disables `gl_screen`; uninstall restores it when configured.
+- Install disables `gl_screen`; uninstall always restores it.
 
 ## Verified gates
 

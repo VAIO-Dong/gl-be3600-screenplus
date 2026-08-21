@@ -86,25 +86,40 @@ function rgb565Preview(base64) {
 
 return view.extend({
 	setBackgroundPreview: function(page, source) {
-		var preview = document.getElementById('screenplus-preview-' + page);
 		var container = document.getElementById('screenplus-preview-container-' + page);
-		if (!preview || !container)
+		var removeButton = document.getElementById('screenplus-remove-' + page);
+		if (!container || !removeButton)
 			return;
+		this.renderBackgroundPreview(page, container, removeButton, source);
+	},
+
+	renderBackgroundPreview: function(page, container, removeButton, source) {
+		while (container.firstChild)
+			container.removeChild(container.firstChild);
 		if (source) {
-			preview.src = source;
+			container.appendChild(E('img', {
+				'id': 'screenplus-preview-' + page,
+				'src': source,
+				'width': WIDTH,
+				'height': HEIGHT,
+				'alt': _('Converted 284 × 76 preview'),
+				'style': 'max-width:100%;height:auto;border:2px solid #3b424a;background:#030912'
+			}));
 			container.style.display = '';
+			removeButton.style.display = '';
 		} else {
-			preview.removeAttribute('src');
 			container.style.display = 'none';
+			removeButton.style.display = 'none';
 		}
 	},
 
-	loadBackgroundPreview: function(page, preview, container) {
+	loadBackgroundPreview: function(page, container, removeButton) {
+		var self = this;
 		return fs.exec(BACKGROUND_HELPER, [ 'preview', page ]).then(function(result) {
 			if (!result || result.code !== 0 || !result.stdout)
 				return;
-			preview.src = rgb565Preview(result.stdout);
-			container.style.display = '';
+			self.renderBackgroundPreview(page, container, removeButton,
+				rgb565Preview(result.stdout));
 		}).catch(function() {
 			/* A missing or invalid installed image simply has no preview. */
 		});
@@ -170,18 +185,17 @@ return view.extend({
 	},
 
 	renderUploader: function(page, title) {
-		var preview = E('img', {
-			'id': 'screenplus-preview-' + page,
-			'width': WIDTH,
-			'height': HEIGHT,
-			'alt': _('Converted 284 × 76 preview'),
-			'style': 'max-width:100%;height:auto;border:2px solid #3b424a;background:#030912'
-		});
 		var previewContainer = E('div', {
 			'id': 'screenplus-preview-container-' + page,
 			'style': 'display:none;margin-top:.5em'
-		}, [ preview ]);
-		this.loadBackgroundPreview(page, preview, previewContainer);
+		});
+		var removeButton = E('button', {
+			'id': 'screenplus-remove-' + page,
+			'class': 'btn cbi-button cbi-button-negative',
+			'style': 'display:none',
+			'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
+		}, [ _('Remove') ]);
+		this.loadBackgroundPreview(page, previewContainer, removeButton);
 		return E('div', { 'class': 'cbi-value' }, [
 			E('label', { 'class': 'cbi-value-title' }, [ title ]),
 			E('div', { 'class': 'cbi-value-field' }, [
@@ -191,10 +205,7 @@ return view.extend({
 					'change': ui.createHandlerFn(this, 'handleBackgroundFile', page)
 				}),
 				' ',
-				E('button', {
-					'class': 'btn cbi-button cbi-button-negative',
-					'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
-				}, [ _('Remove') ]),
+				removeButton,
 				previewContainer
 			])
 		]);

@@ -14,6 +14,8 @@ fi
 	logger -t screenplus "native Toggle frontend patch was not applied"
 /etc/init.d/screenplus enable
 /etc/init.d/screenplus start
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+/etc/init.d/rpcd restart 2>/dev/null
 if [ "$(uci -q get switch-button.@main[0].func)" = "screenplus" ] &&
    [ -x /etc/init.d/gl_switch_button_check ]; then
 	/etc/init.d/gl_switch_button_check start 2>/dev/null

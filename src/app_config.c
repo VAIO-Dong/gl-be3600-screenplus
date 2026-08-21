@@ -40,7 +40,7 @@ void screenplus_config_defaults(struct screenplus_config *config)
 {
 	static const char *const home_fields[] = { "time", "date", "weekday" };
 	static const char *const status_fields[] = { "cpu", "memory", "fan" };
-	static const char *const traffic_fields[] = { "rates", "history" };
+	static const char *const traffic_fields[] = { "rates", "connections", "history" };
 	static const char *const network_fields[] = {
 		"lan", "ethernet", "repeater", "tethering", "cellular", "wan_detail"
 	};
@@ -72,12 +72,12 @@ void screenplus_config_defaults(struct screenplus_config *config)
 		home_fields, sizeof(home_fields) / sizeof(home_fields[0]));
 	set_default_page(&config->pages[SCREENPLUS_PAGE_TRAFFIC], 20,
 		traffic_fields, sizeof(traffic_fields) / sizeof(traffic_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_WIFI], 30,
-		wifi_fields, sizeof(wifi_fields) / sizeof(wifi_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_NETWORK], 40,
-		network_fields, sizeof(network_fields) / sizeof(network_fields[0]));
-	set_default_page(&config->pages[SCREENPLUS_PAGE_STATUS], 50,
+	set_default_page(&config->pages[SCREENPLUS_PAGE_STATUS], 30,
 		status_fields, sizeof(status_fields) / sizeof(status_fields[0]));
+	set_default_page(&config->pages[SCREENPLUS_PAGE_WIFI], 40,
+		wifi_fields, sizeof(wifi_fields) / sizeof(wifi_fields[0]));
+	set_default_page(&config->pages[SCREENPLUS_PAGE_NETWORK], 50,
+		network_fields, sizeof(network_fields) / sizeof(network_fields[0]));
 	set_default_page(&config->pages[SCREENPLUS_PAGE_OPENCLASH], 60,
 		openclash_fields, sizeof(openclash_fields) / sizeof(openclash_fields[0]));
 }

@@ -78,6 +78,7 @@ struct transfer_measurement {
 };
 static struct transfer_measurement traffic_upload_measurement;
 static struct transfer_measurement traffic_download_measurement;
+static lv_obj_t *traffic_connections_value;
 static lv_obj_t *traffic_chart;
 static lv_chart_series_t *traffic_download_series;
 static lv_chart_series_t *traffic_upload_series;
@@ -130,6 +131,10 @@ static int32_t drag_offset;
 static int pending_page_delta;
 static volatile sig_atomic_t openclash_toggle_request;
 static volatile sig_atomic_t openclash_toggle_busy;
+static volatile sig_atomic_t openclash_toggle_target;
+static volatile sig_atomic_t openclash_toggle_failed;
+static volatile sig_atomic_t openclash_toggle_command_done;
+static uint32_t openclash_toggle_deadline;
 static bool openclash_toggle_syncing;
 
 static void on_signal(int signal_number)
@@ -314,6 +319,7 @@ static struct transfer_measurement create_transfer_measurement(
 {
 	struct transfer_measurement measurement = {0};
 	measurement.icon = create_label(parent, icon, x, y, ui_label_font(), icon_colour);
+	set_fixed_text(measurement.icon, 12, LV_TEXT_ALIGN_CENTER);
 	measurement.rate_number = create_label(parent, "0", x + 16, y,
 		ui_label_font(), app_config.primary_colour);
 	measurement.rate_unit = create_label(parent, "K/s", x + 43, y,
@@ -509,6 +515,11 @@ static void apply_metrics(lv_timer_t *timer)
 		traffic_target_download, metrics.network_receive_total_bytes);
 	update_transfer_measurement(&traffic_upload_measurement,
 		traffic_target_upload, metrics.network_transmit_total_bytes);
+	if (traffic_connections_value) {
+		snprintf(main_text, sizeof(main_text), "%u",
+			metrics.network_connection_count);
+		set_label_text_if_changed(traffic_connections_value, main_text);
+	}
 	if (traffic_chart) {
 		double maximum = traffic_target_download > traffic_target_upload ?
 			traffic_target_download : traffic_target_upload;
@@ -772,12 +783,25 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
 	create_divider(screen, 134, 8, 2, 60);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		traffic_upload_measurement = create_transfer_measurement(screen, 8, 10,
+		traffic_upload_measurement = create_transfer_measurement(screen, 34, 4,
 			LV_SYMBOL_UPLOAD, app_config.secondary_colour);
-		traffic_download_measurement = create_transfer_measurement(screen, 8, 48,
+		traffic_download_measurement = create_transfer_measurement(screen, 34, 29,
 			LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
 		set_transfer_part_visible(&traffic_upload_measurement, true, false);
 		set_transfer_part_visible(&traffic_download_measurement, true, false);
+	}
+	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "connections")) {
+		lv_obj_t *icon = create_label(screen, LV_SYMBOL_SHUFFLE, 34, 54,
+			ui_label_font(), app_config.secondary_colour);
+		set_fixed_text(icon, 12, LV_TEXT_ALIGN_CENTER);
+		traffic_connections_value = create_label(screen, "0", 50, 54,
+			ui_label_font(), app_config.primary_colour);
+		/*
+		 * Centre the count in the same 51 px field occupied by the rate number
+		 * and unit above. This keeps the icon column exact, balances short
+		 * counts visually and still leaves enough fixed width for long counts.
+		 */
+		set_fixed_text(traffic_connections_value, 51, LV_TEXT_ALIGN_CENTER);
 	}
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
 		traffic_chart = lv_chart_create(screen);
@@ -839,9 +863,9 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	create_divider(screen, 8, 25, 268, 2);
 	create_divider(screen, 8, 50, 268, 2);
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
-		create_label(screen, "WAN", 8, 4, ui_label_font(),
+		create_label(screen, "WAN", 8, 29, ui_label_font(),
 			app_config.accent_colour);
-		network_wan_value = create_label(screen, "--", 55, 4,
+		network_wan_value = create_label(screen, "--", 55, 29,
 			ui_label_font(), app_config.primary_colour);
 		lv_obj_set_width(network_wan_value, 221);
 		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
@@ -860,7 +884,7 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 			8 + (int)(268U * slot / visible);
 		int next = visible == 4 ? four_column_edges[slot + 1U] :
 			8 + (int)(268U * (slot + 1U) / visible);
-		network_uplink_labels[index] = create_label(screen, titles[index], x, 29,
+		network_uplink_labels[index] = create_label(screen, titles[index], x, 4,
 			ui_label_font(), app_config.secondary_colour);
 		lv_obj_set_width(network_uplink_labels[index], next - x);
 		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
@@ -976,16 +1000,14 @@ static void toggle_wifi_password(unsigned int band)
 static void wifi_touch_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
-	lv_indev_t *input = lv_indev_active();
 	if (code == LV_EVENT_PRESSED) {
 		wifi_touch_active = false;
 		password_long_press_handled = false;
-		if (!input)
+		unsigned int band = (unsigned int)(uintptr_t)lv_event_get_user_data(event);
+		if (band >= 2 || !wifi_band_rows[band])
 			return;
-		lv_point_t point;
-		lv_indev_get_point(input, &point);
-		wifi_touch_band = point.y >= 38 ? 1U : 0U;
-		wifi_touch_active = wifi_band_rows[wifi_touch_band] != NULL;
+		wifi_touch_band = band;
+		wifi_touch_active = true;
 		return;
 	}
 	if (code == LV_EVENT_LONG_PRESSED) {
@@ -1054,8 +1076,9 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
 	lv_obj_set_style_border_width(row, 0, 0);
 	lv_obj_set_style_pad_all(row, 0, 0);
-	lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE |
-		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+	lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE |
+		LV_OBJ_FLAG_GESTURE_BUBBLE);
 	wifi_band_titles[band] = create_label(row, title, 8, 10,
 		ui_label_font(), app_config.accent_colour);
 	wifi_ssid_labels[band] = create_label(row, "--", 55, 2,
@@ -1071,6 +1094,8 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_obj_clear_flag(wifi_ssid_labels[band], LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_clear_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE |
 		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+	lv_obj_add_event_cb(row, wifi_touch_event, LV_EVENT_ALL,
+		(void *)(uintptr_t)band);
 }
 
 static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
@@ -1081,7 +1106,6 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 		create_wifi_band_row(screen, 0, 0, "2.4G");
 	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_WIFI, "wifi_5g"))
 		create_wifi_band_row(screen, 1, 39, "5G");
-	lv_obj_add_event_cb(screen, wifi_touch_event, LV_EVENT_ALL, NULL);
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -1089,11 +1113,24 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 static void openclash_toggle_event(lv_event_t *event)
 {
 	if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED ||
-	    openclash_toggle_syncing)
+	    openclash_toggle_syncing || openclash_toggle_busy)
 		return;
 	lv_obj_t *toggle = lv_event_get_target_obj(event);
-	openclash_toggle_request = lv_obj_has_state(toggle, LV_STATE_CHECKED) ? 1 : -1;
+	openclash_toggle_target = lv_obj_has_state(toggle, LV_STATE_CHECKED) ? 1 : -1;
+	openclash_toggle_request = openclash_toggle_target;
+	openclash_toggle_failed = 0;
+	openclash_toggle_command_done = 0;
 	openclash_toggle_busy = 1;
+	openclash_toggle_deadline = monotonic_milliseconds() + 30000U;
+	lv_obj_add_state(toggle, LV_STATE_DISABLED);
+	if (openclash_state_label) {
+		set_label_text_if_changed(openclash_state_label,
+			openclash_toggle_target > 0 ?
+			translated("启动中", "STARTING") :
+			translated("停止中", "STOPPING"));
+		lv_obj_set_style_text_color(openclash_state_label,
+			colour(app_config.warning_colour), 0);
+	}
 }
 
 static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
@@ -1116,7 +1153,7 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 		LV_PART_INDICATOR | LV_STATE_CHECKED);
 	lv_obj_set_style_bg_color(openclash_toggle,
 		colour(app_config.primary_colour), LV_PART_KNOB);
-	lv_obj_add_flag(openclash_toggle, LV_OBJ_FLAG_EVENT_BUBBLE |
+	lv_obj_clear_flag(openclash_toggle, LV_OBJ_FLAG_EVENT_BUBBLE |
 		LV_OBJ_FLAG_GESTURE_BUBBLE);
 	lv_obj_add_event_cb(openclash_toggle, openclash_toggle_event,
 		LV_EVENT_VALUE_CHANGED, NULL);
@@ -1221,15 +1258,43 @@ static void apply_system_snapshot(lv_timer_t *timer)
 		update_wifi_band_display(band, wifi_bands[band]);
 
 	if (openclash_state_label) {
-		unsigned int openclash_hex = state_colour(snapshot.openclash.state);
-		set_label_text_if_changed(openclash_state_label, display_state_text(snapshot.openclash.state));
-		lv_obj_set_style_text_color(openclash_state_label, colour(openclash_hex), 0);
+		bool toggle_pending = openclash_toggle_busy;
+		if (toggle_pending) {
+			bool reached_target = openclash_toggle_target > 0 ?
+				snapshot.openclash.state == SCREENPLUS_STATE_ACTIVE :
+				snapshot.openclash.state == SCREENPLUS_STATE_IDLE;
+			bool timed_out = (int32_t)(monotonic_milliseconds() -
+				openclash_toggle_deadline) >= 0;
+			if ((reached_target && openclash_toggle_command_done) ||
+			    openclash_toggle_failed || timed_out) {
+				openclash_toggle_busy = 0;
+				openclash_toggle_target = 0;
+				openclash_toggle_failed = 0;
+				openclash_toggle_command_done = 0;
+				toggle_pending = false;
+			}
+		}
+		if (toggle_pending) {
+			set_label_text_if_changed(openclash_state_label,
+				openclash_toggle_target > 0 ?
+				translated("启动中", "STARTING") :
+				translated("停止中", "STOPPING"));
+			lv_obj_set_style_text_color(openclash_state_label,
+				colour(app_config.warning_colour), 0);
+		} else {
+			unsigned int openclash_hex = state_colour(snapshot.openclash.state);
+			set_label_text_if_changed(openclash_state_label,
+				display_state_text(snapshot.openclash.state));
+			lv_obj_set_style_text_color(openclash_state_label,
+				colour(openclash_hex), 0);
+		}
 		if (openclash_toggle) {
-			if (snapshot.openclash.state == SCREENPLUS_STATE_UNAVAILABLE)
+			if (toggle_pending ||
+			    snapshot.openclash.state == SCREENPLUS_STATE_UNAVAILABLE)
 				lv_obj_add_state(openclash_toggle, LV_STATE_DISABLED);
 			else
 				lv_obj_remove_state(openclash_toggle, LV_STATE_DISABLED);
-			if (!openclash_toggle_busy) {
+			if (!toggle_pending) {
 				bool enabled = snapshot.openclash.state == SCREENPLUS_STATE_ACTIVE ||
 					snapshot.openclash.state == SCREENPLUS_STATE_ERROR;
 				openclash_toggle_syncing = true;
@@ -1278,16 +1343,19 @@ static void apply_openclash_toggle_request(void)
 	if (!request)
 		return;
 	openclash_toggle_request = 0;
+	int result;
 	if (request > 0) {
-		(void)system("/sbin/uci -q set openclash.config.enable='1' && "
+		result = system("/sbin/uci -q set openclash.config.enable='1' && "
 			"/sbin/uci -q commit openclash && "
 			"/etc/init.d/openclash restart >/dev/null 2>&1");
 	} else {
-		(void)system("/sbin/uci -q set openclash.config.enable='0' && "
+		result = system("/sbin/uci -q set openclash.config.enable='0' && "
 			"/sbin/uci -q commit openclash && "
 			"/etc/init.d/openclash stop >/dev/null 2>&1");
 	}
-	openclash_toggle_busy = openclash_toggle_request != 0;
+	if (result != 0)
+		openclash_toggle_failed = 1;
+	openclash_toggle_command_done = 1;
 }
 
 static void *system_worker(void *unused)
@@ -1508,6 +1576,7 @@ int main(int argc, char **argv)
 		       "\"network_acceleration\":\"%s\","
 		       "\"network_receive_bytes_per_second\":%.2f,"
 		       "\"network_transmit_bytes_per_second\":%.2f,"
+		       "\"network_connection_count\":%u,"
 		       "\"network_receive_total_bytes\":%llu,"
 		       "\"network_transmit_total_bytes\":%llu,"
 		       "\"uptime_seconds\":%llu}\n",
@@ -1522,6 +1591,7 @@ int main(int argc, char **argv)
 		       metrics_acceleration_text(metrics.network_acceleration),
 		       metrics.network_receive_bytes_per_second,
 		       metrics.network_transmit_bytes_per_second,
+		       metrics.network_connection_count,
 		       (unsigned long long)metrics.network_receive_total_bytes,
 		       (unsigned long long)metrics.network_transmit_total_bytes,
 		       (unsigned long long)metrics.uptime_seconds);
@@ -1599,6 +1669,17 @@ int main(int argc, char **argv)
 			lv_deinit();
 			return 1;
 		}
+		/*
+		 * The touch panel is mounted 90 degrees counter-clockwise relative to
+		 * the old vendor mapping. Keep the axes unswapped so physical horizontal
+		 * motion drives LVGL's horizontal page axis. The flipped display needs
+		 * both calibrated axes reversed.
+		 */
+		lv_evdev_set_swap_axes(touch, false);
+		if (options.rotation == 270)
+			lv_evdev_set_calibration(touch, 75, 283, 0, 0);
+		else
+			lv_evdev_set_calibration(touch, 0, 0, 75, 283);
 		lv_indev_set_display(touch, display);
 	}
 
