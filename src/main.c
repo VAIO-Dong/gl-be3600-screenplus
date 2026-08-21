@@ -908,11 +908,13 @@ static void update_wifi_band_display(unsigned int band, const struct wifi_info *
 static void password_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
-	unsigned int band = (unsigned int)(uintptr_t)lv_event_get_user_data(event);
-	if (band >= 2)
-		return;
-	if (lv_event_get_current_target_obj(event) == wifi_band_rows[band] &&
-	    lv_event_get_target_obj(event) != wifi_band_rows[band])
+	lv_obj_t *target = lv_event_get_current_target_obj(event);
+	unsigned int band;
+	if (target == wifi_band_rows[0])
+		band = 0;
+	else if (target == wifi_band_rows[1])
+		band = 1;
+	else
 		return;
 	if (code == LV_EVENT_LONG_PRESSED &&
 	    app_config.password_mode != SCREENPLUS_PASSWORD_HIDDEN) {
@@ -967,7 +969,7 @@ static void password_event(lv_event_t *event)
 	bool tap = !drag_moved || abs(drag_offset) < 28;
 	if (code == LV_EVENT_RELEASED && app_config.password_mode == SCREENPLUS_PASSWORD_QR) {
 		if (tap)
-			lv_obj_send_event(wifi_password_labels[band], LV_EVENT_LONG_PRESSED, NULL);
+			lv_obj_send_event(wifi_band_rows[band], LV_EVENT_LONG_PRESSED, NULL);
 		password_long_press_handled = false;
 		return;
 	}
@@ -1047,11 +1049,9 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 	lv_label_set_long_mode(wifi_password_labels[band], LV_LABEL_LONG_DOT);
 	lv_obj_clear_flag(wifi_band_titles[band], LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_clear_flag(wifi_ssid_labels[band], LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_add_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE |
+	lv_obj_clear_flag(wifi_password_labels[band], LV_OBJ_FLAG_CLICKABLE |
 		LV_OBJ_FLAG_EVENT_BUBBLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
-	lv_obj_add_event_cb(wifi_password_labels[band], password_event,
-		LV_EVENT_ALL, (void *)(uintptr_t)band);
-	lv_obj_add_event_cb(row, password_event, LV_EVENT_ALL, (void *)(uintptr_t)band);
+	lv_obj_add_event_cb(row, password_event, LV_EVENT_ALL, NULL);
 }
 
 static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
