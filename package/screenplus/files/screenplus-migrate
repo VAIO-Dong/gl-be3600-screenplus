@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Idempotent migration through the default-fallback and page-order schema.
+# Idempotent migration through the explicit page-order and aligned-page schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "14" ] && exit 0
+[ "$schema_version" = "15" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -21,14 +21,37 @@ migrate_page_order() {
 	done
 }
 
-clear_builtin_page_order_values() {
+ensure_page_order_values() {
 	uci set screenplus.page_order=page_order
 	for page_default in 'home 10' 'traffic 20' 'status 30' \
 		'wifi 40' 'network 50' 'openclash 60'; do
 		set -- $page_default
 		value="$(uci -q get "screenplus.page_order.$1")"
-		[ "$value" = "$2" ] && uci -q delete "screenplus.page_order.$1"
+		[ -n "$value" ] || uci set "screenplus.page_order.$1=$2"
 	done
+}
+
+canonicalise_network_fields() {
+	fields="$(uci -q get screenplus.network.field)"
+	[ -n "$fields" ] || fields='ethernet repeater tethering cellular wan_detail lan'
+	uci -q delete screenplus.network.field
+	added=0
+	for field in ethernet repeater tethering cellular wan_detail lan; do
+		case " $fields " in
+			*" $field "*) uci add_list "screenplus.network.field=$field"; added=1 ;;
+		esac
+	done
+	[ "$added" = "1" ] || uci add_list screenplus.network.field=none
+}
+
+align_openclash_traffic_fields() {
+	fields="$(uci -q get screenplus.openclash.field)"
+	case " $fields " in
+		*' rates '*|*' totals '*)
+			case " $fields " in *' rates '*) ;; *) uci add_list screenplus.openclash.field=rates ;; esac
+			case " $fields " in *' totals '*) ;; *) uci add_list screenplus.openclash.field=totals ;; esac
+			;;
+	esac
 }
 
 bind_existing_backgrounds() {
@@ -76,11 +99,17 @@ finish_migration() {
 	migrate_divider_colour
 	add_openclash_resources
 	add_traffic_connections
-	clear_builtin_page_order_values
-	uci set screenplus.main.schema_version=14
+	ensure_page_order_values
+	canonicalise_network_fields
+	align_openclash_traffic_fields
+	uci set screenplus.main.schema_version=15
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "14" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "13" ]; then
 	finish_migration
@@ -132,12 +161,12 @@ fi
 # whose meaning changed so unrelated user page choices remain untouched.
 if [ "$schema_version" = "3" ]; then
 	uci -q delete screenplus.network.field
-	uci add_list screenplus.network.field=lan
 	uci add_list screenplus.network.field=ethernet
 	uci add_list screenplus.network.field=repeater
 	uci add_list screenplus.network.field=tethering
 	uci add_list screenplus.network.field=cellular
 	uci add_list screenplus.network.field=wan_detail
+	uci add_list screenplus.network.field=lan
 	uci set screenplus.appearance.background_mode="$(get_or_default \
 		screenplus.appearance.background_mode page)"
 	migrate_page_order
@@ -188,12 +217,12 @@ uci set screenplus.network=page
 uci set screenplus.network.enabled="$network_enabled"
 uci set screenplus.network.order="$network_order"
 uci -q delete screenplus.network.field
-uci add_list screenplus.network.field=lan
 uci add_list screenplus.network.field=ethernet
 uci add_list screenplus.network.field=repeater
 uci add_list screenplus.network.field=tethering
 uci add_list screenplus.network.field=cellular
 uci add_list screenplus.network.field=wan_detail
+uci add_list screenplus.network.field=lan
 if [ "$network_background" = "internet.rgb565" ] &&
    [ -f /usr/share/screenplus/backgrounds/internet.rgb565 ]; then
 	mv -f /usr/share/screenplus/backgrounds/internet.rgb565 \

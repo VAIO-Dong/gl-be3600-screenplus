@@ -94,34 +94,53 @@ return view.extend({
 	},
 
 	renderBackgroundPreview: function(page, container, removeButton, source) {
+		container.dataset.previewSource = source || '';
 		while (container.firstChild)
 			container.removeChild(container.firstChild);
-		if (source) {
-			container.appendChild(E('img', {
-				'id': 'screenplus-preview-' + page,
-				'src': source,
-				'width': WIDTH,
-				'height': HEIGHT,
-				'alt': _('Converted 284 × 76 preview'),
-				'style': 'max-width:100%;height:auto;border:2px solid #3b424a;background:#030912'
-			}));
+		container.style.display = 'none';
+		removeButton.style.display = 'none';
+		if (!source)
+			return;
+
+		/* Keep the image detached and the controls hidden until the browser has
+		 * decoded it. A missing or malformed asset can therefore never render a
+		 * broken-image placeholder, even briefly. */
+		var image = E('img', {
+			'id': 'screenplus-preview-' + page,
+			'width': WIDTH,
+			'height': HEIGHT,
+			'alt': '',
+			'style': 'max-width:100%;height:auto;border:2px solid #3b424a;background:#030912'
+		});
+		image.onload = function() {
+			if (container.dataset.previewSource !== source)
+				return;
+			container.appendChild(image);
 			container.style.display = '';
 			removeButton.style.display = '';
-		} else {
+		};
+		image.onerror = function() {
+			if (container.dataset.previewSource !== source)
+				return;
+			container.dataset.previewSource = '';
 			container.style.display = 'none';
 			removeButton.style.display = 'none';
-		}
+		};
+		image.src = source;
 	},
 
 	loadBackgroundPreview: function(page, container, removeButton) {
 		var self = this;
+		self.renderBackgroundPreview(page, container, removeButton, null);
 		return fs.exec(BACKGROUND_HELPER, [ 'preview', page ]).then(function(result) {
-			if (!result || result.code !== 0 || !result.stdout)
+			if (!result || result.code !== 0 || !result.stdout) {
+				self.renderBackgroundPreview(page, container, removeButton, null);
 				return;
+			}
 			self.renderBackgroundPreview(page, container, removeButton,
 				rgb565Preview(result.stdout));
 		}).catch(function() {
-			/* A missing or invalid installed image simply has no preview. */
+			self.renderBackgroundPreview(page, container, removeButton, null);
 		});
 	},
 
@@ -191,6 +210,7 @@ return view.extend({
 		});
 		var removeButton = E('button', {
 			'id': 'screenplus-remove-' + page,
+			'type': 'button',
 			'class': 'btn cbi-button cbi-button-negative',
 			'style': 'display:none',
 			'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
@@ -293,10 +313,10 @@ return view.extend({
 					E('div', { 'class': 'cbi-section' }, [
 						this.renderUploader('global', _('Global background (all pages)')),
 						this.renderUploader('home', _('Home / clock')),
-						this.renderUploader('status', _('Device status')),
 						this.renderUploader('traffic', _('Network traffic')),
-						this.renderUploader('network', _('Network')),
+						this.renderUploader('status', _('Device status')),
 						this.renderUploader('wifi', _('Wi-Fi credentials')),
+						this.renderUploader('network', _('LAN / WAN connections')),
 						this.renderUploader('openclash', _('OpenClash'))
 					])
 				])

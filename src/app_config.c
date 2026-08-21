@@ -42,7 +42,7 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	static const char *const status_fields[] = { "cpu", "memory", "fan" };
 	static const char *const traffic_fields[] = { "rates", "connections", "history" };
 	static const char *const network_fields[] = {
-		"lan", "ethernet", "repeater", "tethering", "cellular", "wan_detail"
+		"ethernet", "repeater", "tethering", "cellular", "wan_detail", "lan"
 	};
 	static const char *const wifi_fields[] = { "wifi_2g", "wifi_5g" };
 	static const char *const openclash_fields[] = {
