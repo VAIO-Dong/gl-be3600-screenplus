@@ -18,7 +18,11 @@ New-Item -ItemType Directory -Path $localCache -Force | Out-Null
 $env:ZIG_GLOBAL_CACHE_DIR = $globalCache
 $env:ZIG_LOCAL_CACHE_DIR = $localCache
 
-& $zigExecutable cc -target aarch64-linux-musl -static -O2 -std=c11 -o $outputPath $sourcePath
+& $zigExecutable cc -target aarch64-linux-musl -static -O2 -std=c11 `
+    "-ffile-prefix-map=$repositoryRoot=." `
+    "-fmacro-prefix-map=$repositoryRoot=." `
+    '-Wl,--strip-all' `
+    -o $outputPath $sourcePath
 if ($LASTEXITCODE -ne 0) {
     throw "Touch tool build failed with exit code $LASTEXITCODE"
 }

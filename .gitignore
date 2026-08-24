@@ -1,7 +1,6 @@
 .tools/
 build/
 dist/
-.device_known_hosts
 .dev/
 *.ipk
 *.apk

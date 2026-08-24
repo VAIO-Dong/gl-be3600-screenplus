@@ -28,6 +28,8 @@ $env:ZIG_LOCAL_CACHE_DIR = $localCache
 $arguments = @(
     '-target', 'aarch64-linux-musl',
     '-static', '-O2', '-std=c11', '-pthread',
+    "-ffile-prefix-map=$repositoryRoot=.",
+    "-fmacro-prefix-map=$repositoryRoot=.",
     '-ffunction-sections', '-fdata-sections',
     '-Wl,--gc-sections', '-Wl,--strip-all',
     '-DLV_CONF_INCLUDE_SIMPLE',

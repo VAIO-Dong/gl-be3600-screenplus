@@ -24,6 +24,9 @@ $env:ZIG_LOCAL_CACHE_DIR = $localCache
     -static `
     -O2 `
     -std=c11 `
+    "-ffile-prefix-map=$repositoryRoot=." `
+    "-fmacro-prefix-map=$repositoryRoot=." `
+    '-Wl,--strip-all' `
     -Wall `
     -Wextra `
     -Werror `

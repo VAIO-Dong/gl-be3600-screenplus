@@ -32,8 +32,12 @@ panel revision is suspected, use the monitor command to record physical taps.
 Build and upload the static AArch64 helper:
 
 ~~~powershell
+$device = 'user@router-address'
+$identityFile = 'path\to\private-key'
+$knownHostsFile = 'path\to\known-hosts'
 powershell -ExecutionPolicy Bypass -File scripts\build-touch-tool.ps1
-scp -O -i .dev\screenplus_dev_key build\screenplus-touch root@192.168.8.1:/tmp/
+scp -O -i $identityFile -o "UserKnownHostsFile=$knownHostsFile" `
+    -o StrictHostKeyChecking=yes build\screenplus-touch "${device}:/tmp/"
 ~~~
 
 Useful device commands:
@@ -64,8 +68,14 @@ of the gesture.
 Capture the current screen and convert RGB565 to PNG:
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File scripts\capture-device-screen.ps1 -OutputPath build\device-screen.png
+powershell -ExecutionPolicy Bypass -File scripts\capture-device-screen.ps1 `
+    -Device $device -IdentityFile $identityFile -KnownHostsFile $knownHostsFile `
+    -OutputPath build\device-screen.png
 ~~~
+
+`Device` is required. `IdentityFile` and `KnownHostsFile` are optional when the
+SSH agent and the user's normal known-hosts database are used. Relative file
+paths are resolved from the repository root.
 
 Compare logical regions without rendering sensitive Wi-Fi passwords:
 
@@ -94,10 +104,8 @@ should change only bottom. Do not attach or publish a password-revealed PNG.
 ## Device lifecycle and transport
 
 - OpenWrt on the test device has no SFTP server; use scp -O for legacy SCP.
-- The user plans to factory-reset the test router after this build. Its SSH host
-  key and development authorization may change. On the next connection, verify
-  the new fingerprint and refresh `.device_known_hosts`/the authorized key
-  instead of trusting the currently recorded key.
+- After a factory reset or device replacement, verify the SSH host fingerprint
+  again and refresh the selected known-hosts entry and authorized key.
 - Stop the managed ScreenPlus service before running a standalone capture
   process, and always restore /etc/init.d/screenplus start after the test.
 - Keep temporary captures under /tmp on the router to avoid flash writes.

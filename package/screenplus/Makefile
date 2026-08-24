@@ -36,6 +36,8 @@ endef
 define Build/Compile
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_CPPFLAGS) \
 		-O2 -std=c11 -pthread -ffunction-sections -fdata-sections \
+		-ffile-prefix-map=$(PKG_BUILD_DIR)=. \
+		-fmacro-prefix-map=$(PKG_BUILD_DIR)=. \
 		-D_GNU_SOURCE -DLV_CONF_INCLUDE_SIMPLE \
 		-I$(PKG_BUILD_DIR)/screenplus-src -I$(PKG_BUILD_DIR) \
 		-Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
