@@ -9,7 +9,7 @@ var INIT = '/etc/init.d/screenplus';
 function runDiagnostic(action) {
 	return fs.exec(DIAGNOSTICS, [ action ]).then(function(result) {
 		return result && result.code === 0 ? result.stdout.trim() :
-			(result && result.stderr || _('Diagnostic command failed.'));
+			(result && result.stderr || _('This information is temporarily unavailable.'));
 	});
 }
 
@@ -29,8 +29,8 @@ return view.extend({
 		button.classList.add('spinning');
 		return fs.exec(INIT, [ action ]).then(function(result) {
 			if (!result || result.code !== 0)
-				throw new Error(result && result.stderr || _('Service action failed.'));
-			ui.addNotification(null, E('p', {}, _('ScreenPlus service action completed.')), 'info');
+				throw new Error(result && result.stderr || _('ScreenPlus could not complete this action.'));
+			ui.addNotification(null, E('p', {}, _('ScreenPlus is ready.')), 'info');
 			window.setTimeout(function() { window.location.reload(); }, 800);
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
@@ -49,25 +49,25 @@ return view.extend({
 
 	render: function(data) {
 		return E([], [
-			E('h2', {}, [ _('ScreenPlus diagnostics') ]),
+			E('h2', {}, [ _('Status and support') ]),
 			E('div', { 'class': 'cbi-map-descr' }, [
-				_('Live samples intentionally omit the Wi-Fi password.')
+				_('Check whether ScreenPlus is working normally or refresh it after troubleshooting.')
 			]),
 			E('div', { 'class': 'cbi-section' }, [
 				E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'click': ui.createHandlerFn(this, 'handleAction', 'reload')
-				}, [ _('Reload configuration') ]),
+				}, [ _('Refresh ScreenPlus') ]),
 				' ',
 				E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'click': ui.createHandlerFn(this, 'handleAction', 'restart')
-				}, [ _('Restart service') ])
+				}, [ _('Restart ScreenPlus') ])
 			]),
-			this.renderBlock(_('Service and hardware'), data[0]),
-			this.renderBlock(_('Device metrics'), data[1]),
-			this.renderBlock(_('Connectivity snapshot'), data[2]),
-			this.renderBlock(_('Recent ScreenPlus logs'), data[3])
+			this.renderBlock(_('Screen status'), data[0]),
+			this.renderBlock(_('Performance snapshot'), data[1]),
+			this.renderBlock(_('Network snapshot'), data[2]),
+			this.renderBlock(_('Recent activity'), data[3])
 		]);
 	},
 

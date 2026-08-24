@@ -10,11 +10,11 @@
 		}
 	},
 	"admin/system/screenplus/general": {
-		"title": "General",
+		"title": "Display",
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "screenplus/general"
+			"path": "screenplus/general-v112"
 		}
 	},
 	"admin/system/screenplus/pages": {
@@ -22,23 +22,23 @@
 		"order": 20,
 		"action": {
 			"type": "view",
-			"path": "screenplus/pages"
+			"path": "screenplus/pages-v113"
 		}
 	},
 	"admin/system/screenplus/appearance": {
-		"title": "Appearance",
+		"title": "Theme",
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "screenplus/appearance"
+			"path": "screenplus/appearance-v113"
 		}
 	},
 	"admin/system/screenplus/diagnostics": {
-		"title": "Diagnostics",
+		"title": "Support",
 		"order": 40,
 		"action": {
 			"type": "view",
-			"path": "screenplus/diagnostics"
+			"path": "screenplus/diagnostics-v112"
 		}
 	}
 }

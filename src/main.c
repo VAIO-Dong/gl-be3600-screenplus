@@ -20,8 +20,16 @@
 #include "metrics.h"
 #include "system_info.h"
 
+LV_FONT_DECLARE(screenplus_ui_14);
+
 #define DEFAULT_FRAMEBUFFER "/dev/fb0"
 #define DEFAULT_INPUT "/dev/input/event0"
+#define RESET_BUTTON_MARKER "/tmp/screenplus-reset-button"
+#define RESET_NETWORK_MS 3000U
+#define RESET_FACTORY_MS 8000U
+#define RESET_CANCEL_MS 20000U
+#define RESET_CONFIRM_MS 3000U
+#define RESET_STAGE_COUNT 3U
 
 struct options {
 	const char *framebuffer;
@@ -50,6 +58,15 @@ static lv_obj_t *wifi_screen;
 static lv_obj_t *wifi_qr_screen;
 static lv_obj_t *wifi_qr_code;
 static lv_obj_t *openclash_screen;
+static lv_obj_t *reset_screen;
+static lv_obj_t *reset_stage_pages[RESET_STAGE_COUNT];
+static lv_obj_t *reset_stage_main_labels[RESET_STAGE_COUNT];
+static lv_obj_t *reset_stage_detail_labels[RESET_STAGE_COUNT];
+static lv_obj_t *reset_stage_progress[RESET_STAGE_COUNT];
+static bool reset_overlay_active;
+static unsigned int reset_visible_stage = RESET_STAGE_COUNT;
+static unsigned int reset_last_remaining = UINT32_MAX;
+static bool reset_cancelled;
 static lv_obj_t *screens[SCREENPLUS_PAGE_COUNT];
 static lv_obj_t *screens_by_page[SCREENPLUS_PAGE_COUNT];
 static unsigned int screen_count;
@@ -95,7 +112,9 @@ static lv_obj_t *wifi_ssid_labels[2];
 static lv_obj_t *wifi_password_labels[2];
 static lv_obj_t *network_lan_label;
 static lv_obj_t *network_uplink_labels[4];
+static lv_obj_t *network_wan_title;
 static lv_obj_t *network_wan_value;
+static lv_obj_t *network_lan_title;
 static lv_obj_t *openclash_state_label;
 static lv_obj_t *openclash_toggle;
 static struct transfer_measurement openclash_download_measurement;
@@ -123,6 +142,7 @@ static lv_display_t *main_display;
 static bool backlight_on = true;
 static void *background_buffers[SCREENPLUS_PAGE_COUNT];
 static int requested_start_page = -1;
+static int requested_start_index = -1;
 static bool drag_tracking;
 static bool drag_moved;
 static bool page_animation_running;
@@ -152,6 +172,13 @@ static uint32_t monotonic_milliseconds(void)
 	return (uint32_t)((uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U);
 }
 
+static double monotonic_seconds(void)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+}
+
 static void sleep_milliseconds(uint32_t milliseconds)
 {
 	struct timespec delay = {
@@ -176,7 +203,7 @@ static const char *translated(const char *chinese, const char *english)
 
 static const lv_font_t *small_ui_font(void)
 {
-	return app_config.chinese ? &lv_font_source_han_sans_sc_14_cjk :
+	return app_config.chinese ? &screenplus_ui_14 :
 		&lv_font_montserrat_14;
 }
 
@@ -304,6 +331,21 @@ static lv_obj_t *create_label(lv_obj_t *parent, const char *text, int x, int y,
 	lv_obj_set_style_text_font(label, font, 0);
 	lv_obj_set_style_text_color(label, colour(text_colour), 0);
 	return label;
+}
+
+static int responsive_row_y(unsigned int index, unsigned int count)
+{
+	if (!count)
+		return 29;
+	return (int)(76U * (2U * index + 1U) / (2U * count)) - 9;
+}
+
+static void create_responsive_row_dividers(lv_obj_t *parent, unsigned int count)
+{
+	for (unsigned int index = 1; index < count; ++index) {
+		int y = (int)(76U * index / count) - 1;
+		create_divider(parent, 8, y, 268, 2);
+	}
 }
 
 static void set_fixed_text(lv_obj_t *label, int width, lv_text_align_t alignment)
@@ -705,6 +747,7 @@ static void manage_idle_state(lv_timer_t *timer)
 	if (!main_display)
 		return;
 	bool should_be_on = app_config.always_on ||
+		reset_overlay_active ||
 		lv_display_get_inactive_time(main_display) < app_config.idle_timeout_seconds * 1000U;
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
@@ -720,26 +763,38 @@ static void manage_idle_state(lv_timer_t *timer)
 static lv_obj_t *build_clock_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_HOME);
+	bool show_time = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_HOME, "time");
+	bool show_detail = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_HOME, "date") ||
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_HOME, "weekday") ||
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_HOME, "timezone");
 
 	lv_obj_t *accent = lv_obj_create(screen);
-	lv_obj_set_pos(accent, 14, 8);
-	lv_obj_set_size(accent, 4, 60);
+	lv_obj_set_pos(accent, 14, show_time && show_detail ? 8 : 18);
+	lv_obj_set_size(accent, 4, show_time && show_detail ? 60 : 40);
 	lv_obj_set_style_radius(accent, 0, 0);
 	lv_obj_set_style_border_width(accent, 0, 0);
 	lv_obj_set_style_bg_color(accent, colour(app_config.accent_colour), 0);
 	lv_obj_clear_flag(accent, LV_OBJ_FLAG_SCROLLABLE);
 
-	clock_label = create_label(screen, "--:--", 28, 11, &lv_font_montserrat_28,
+	clock_label = create_label(screen, "--:--", 28,
+		show_detail ? 11 : 22, &lv_font_montserrat_28,
 		app_config.primary_colour);
 	lv_obj_set_width(clock_label, 246);
 	lv_obj_set_style_text_align(clock_label, LV_TEXT_ALIGN_LEFT, 0);
 	lv_obj_set_style_text_letter_space(clock_label, -1, 0);
-	date_label = create_label(screen, "---- -- --", 28, 48, small_ui_font(),
+	date_label = create_label(screen, "---- -- --", 28,
+		show_time ? 48 : 29, small_ui_font(),
 		app_config.primary_colour);
 	lv_obj_set_width(date_label, 246);
 	lv_obj_set_style_text_align(date_label, LV_TEXT_ALIGN_LEFT, 0);
-	if (!screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_HOME, "time"))
+	if (!show_time)
 		lv_obj_add_flag(clock_label, LV_OBJ_FLAG_HIDDEN);
+	if (!show_detail)
+		lv_obj_add_flag(date_label, LV_OBJ_FLAG_HIDDEN);
+	if (!show_time && !show_detail)
+		lv_obj_add_flag(accent, LV_OBJ_FLAG_HIDDEN);
 
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
@@ -763,17 +818,29 @@ static void create_metric(lv_obj_t *parent, const char *title, int x,
 static lv_obj_t *build_status_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_STATUS);
-	create_divider(screen, 94, 10, 2, 56);
-	create_divider(screen, 189, 10, 2, 56);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "cpu"))
-		create_metric(screen, "CPU", 0,
-			&cpu_value, &cpu_detail);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "memory"))
-		create_metric(screen, "MEM", 95,
-			&memory_value, &memory_detail);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "fan"))
-		create_metric(screen, "FAN", 190,
-			&fan_value, &fan_detail);
+	bool visible[] = {
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "cpu"),
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "memory"),
+		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_STATUS, "fan")
+	};
+	unsigned int count = visible[0] + visible[1] + visible[2];
+	int total_width = count ? (int)(count * 95U - 1U) : 0;
+	int start = (284 - total_width) / 2;
+	unsigned int slot = 0;
+	for (unsigned int index = 0; index < 3; ++index) {
+		if (!visible[index])
+			continue;
+		int x = start + (int)(slot * 95U);
+		if (slot)
+			create_divider(screen, x - 1, 10, 2, 56);
+		if (index == 0)
+			create_metric(screen, "CPU", x, &cpu_value, &cpu_detail);
+		else if (index == 1)
+			create_metric(screen, "MEM", x, &memory_value, &memory_detail);
+		else
+			create_metric(screen, "FAN", x, &fan_value, &fan_detail);
+		++slot;
+	}
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -781,20 +848,34 @@ static lv_obj_t *build_status_screen(lv_obj_t *parent)
 static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_TRAFFIC);
-	create_divider(screen, 134, 8, 2, 60);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates")) {
-		traffic_upload_measurement = create_transfer_measurement(screen, 34, 4,
+	bool show_rates = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_TRAFFIC, "rates");
+	bool show_connections = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_TRAFFIC, "connections");
+	bool show_history = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_TRAFFIC, "history");
+	unsigned int row_count = (show_rates ? 2U : 0U) +
+		(show_connections ? 1U : 0U);
+	int item_x = show_history ? 34 : 108;
+	unsigned int row = 0;
+	if (row_count && show_history)
+		create_divider(screen, 134, 8, 2, 60);
+	if (show_rates) {
+		traffic_upload_measurement = create_transfer_measurement(screen, item_x,
+			responsive_row_y(row++, row_count),
 			LV_SYMBOL_UPLOAD, app_config.secondary_colour);
-		traffic_download_measurement = create_transfer_measurement(screen, 34, 29,
+		traffic_download_measurement = create_transfer_measurement(screen, item_x,
+			responsive_row_y(row++, row_count),
 			LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
 		set_transfer_part_visible(&traffic_upload_measurement, true, false);
 		set_transfer_part_visible(&traffic_download_measurement, true, false);
 	}
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "connections")) {
-		lv_obj_t *icon = create_label(screen, LV_SYMBOL_SHUFFLE, 34, 54,
+	if (show_connections) {
+		int y = responsive_row_y(row, row_count);
+		lv_obj_t *icon = create_label(screen, LV_SYMBOL_SHUFFLE, item_x, y,
 			ui_label_font(), app_config.secondary_colour);
 		set_fixed_text(icon, 12, LV_TEXT_ALIGN_CENTER);
-		traffic_connections_value = create_label(screen, "0", 50, 54,
+		traffic_connections_value = create_label(screen, "0", item_x + 16, y,
 			ui_label_font(), app_config.primary_colour);
 		/*
 		 * Centre the count in the same 51 px field occupied by the rate number
@@ -803,10 +884,10 @@ static lv_obj_t *build_traffic_screen(lv_obj_t *parent)
 		 */
 		set_fixed_text(traffic_connections_value, 51, LV_TEXT_ALIGN_CENTER);
 	}
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_TRAFFIC, "history")) {
+	if (show_history) {
 		traffic_chart = lv_chart_create(screen);
-		lv_obj_set_pos(traffic_chart, 142, 5);
-		lv_obj_set_size(traffic_chart, 134, 66);
+		lv_obj_set_pos(traffic_chart, row_count ? 142 : 8, 5);
+		lv_obj_set_size(traffic_chart, row_count ? 134 : 268, 66);
 		lv_obj_set_style_bg_opa(traffic_chart, LV_OPA_TRANSP, 0);
 		lv_obj_set_style_border_width(traffic_chart, 0, 0);
 		lv_obj_set_style_pad_all(traffic_chart, 0, 0);
@@ -853,6 +934,38 @@ static unsigned int network_state_colour(enum screenplus_state state)
 	}
 }
 
+static int network_text_width(const char *text)
+{
+	lv_point_t size;
+	lv_text_get_size(&size, text, ui_label_font(), 0, 0,
+		LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+	return size.x + 2;
+}
+
+static void layout_network_detail_row(lv_obj_t *title, lv_obj_t *value)
+{
+	if (!title || !value)
+		return;
+	int title_width = network_text_width(lv_label_get_text(title));
+	int value_width = network_text_width(lv_label_get_text(value));
+	if (title_width + 12 + value_width > 268)
+		value_width = 268 - title_width - 12;
+	int group_width = title_width + 12 + value_width;
+	int title_x = (284 - group_width) / 2;
+	int value_x = title_x + title_width + 12;
+	lv_obj_set_x(title, title_x);
+	lv_obj_set_width(title, title_width);
+	lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+	lv_obj_set_x(value, value_x);
+	lv_obj_set_width(value, value_width);
+}
+
+static void layout_network_detail_rows(void)
+{
+	layout_network_detail_row(network_wan_title, network_wan_value);
+	layout_network_detail_row(network_lan_title, network_lan_label);
+}
+
 static lv_obj_t *build_network_screen(lv_obj_t *parent)
 {
 	static const char *const fields[] = {
@@ -860,44 +973,105 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	};
 	static const char *const titles[] = { "ETH", "REPEATER", "USB", "CELLULAR" };
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_NETWORK);
-	create_divider(screen, 8, 25, 268, 2);
-	create_divider(screen, 8, 50, 268, 2);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail")) {
-		create_label(screen, "WAN", 8, 29, ui_label_font(),
-			app_config.accent_colour);
-		network_wan_value = create_label(screen, "--", 55, 29,
-			ui_label_font(), app_config.primary_colour);
-		lv_obj_set_width(network_wan_value, 221);
-		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
-	}
+	unsigned int visible_indices[4] = {0};
+	int uplink_widths[4] = {0};
 	unsigned int visible = 0;
-	for (unsigned int index = 0; index < 4; ++index)
-		visible += screenplus_page_has_field(&app_config,
-			SCREENPLUS_PAGE_NETWORK, fields[index]) ? 1U : 0U;
-	unsigned int slot = 0;
 	for (unsigned int index = 0; index < 4; ++index) {
 		if (!screenplus_page_has_field(&app_config,
 		    SCREENPLUS_PAGE_NETWORK, fields[index]))
 			continue;
-		static const int four_column_edges[] = { 8, 52, 145, 196, 276 };
-		int x = visible == 4 ? four_column_edges[slot] :
-			8 + (int)(268U * slot / visible);
-		int next = visible == 4 ? four_column_edges[slot + 1U] :
-			8 + (int)(268U * (slot + 1U) / visible);
-		network_uplink_labels[index] = create_label(screen, titles[index], x, 4,
-			ui_label_font(), app_config.secondary_colour);
-		lv_obj_set_width(network_uplink_labels[index], next - x);
-		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
-		++slot;
+		lv_point_t size;
+		lv_text_get_size(&size, titles[index], ui_label_font(), 0, 0,
+			LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+		visible_indices[visible] = index;
+		uplink_widths[visible] = size.x + 2;
+		++visible;
 	}
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_NETWORK, "lan")) {
-		create_label(screen, "LAN", 8, 55, ui_label_font(),
+	bool show_wan = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_NETWORK, "wan_detail");
+	bool show_lan = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_NETWORK, "lan");
+	int detail_title_width = 0;
+	if (show_wan) {
+		lv_point_t size;
+		lv_text_get_size(&size, "WAN", ui_label_font(), 0, 0,
+			LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+		detail_title_width = size.x + 2;
+	}
+	if (show_lan) {
+		lv_point_t size;
+		lv_text_get_size(&size, "LAN", ui_label_font(), 0, 0,
+			LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+		if (size.x + 2 > detail_title_width)
+			detail_title_width = size.x + 2;
+	}
+	if (visible && uplink_widths[0] < detail_title_width)
+		uplink_widths[0] = detail_title_width;
+	int uplink_text_width = 0;
+	for (unsigned int slot = 0; slot < visible; ++slot)
+		uplink_text_width += uplink_widths[slot];
+	int natural_group_width = uplink_text_width +
+		(visible > 1U ? 12 * (int)(visible - 1U) : 0);
+	int content_width = natural_group_width > 236 ? natural_group_width : 236;
+	if (content_width > 276)
+		content_width = 276;
+	int content_x = (284 - content_width) / 2;
+	unsigned int row_count = (visible ? 1U : 0U) + show_wan + show_lan;
+	unsigned int row = 0;
+	for (unsigned int index = 1; index < row_count; ++index) {
+		int y = (int)(76U * index / row_count) - 1;
+		create_divider(screen, content_x, y, content_width, 2);
+	}
+	int uplink_y = visible ? responsive_row_y(row++, row_count) : 0;
+	int group_width = natural_group_width;
+	int x = content_x + (content_width - group_width) / 2;
+	int gap_space = visible > 1U ? 12 : 0;
+	int gap_remainder = 0;
+	if (visible == 4U) {
+		x = content_x - 2;
+		gap_space = (content_width - uplink_text_width) / 3;
+		gap_remainder = (content_width - uplink_text_width) % 3;
+	}
+	for (unsigned int slot = 0; slot < visible; ++slot) {
+		unsigned int index = visible_indices[slot];
+		int width = uplink_widths[slot];
+		network_uplink_labels[index] = create_label(screen, titles[index], x, uplink_y,
+			ui_label_font(), app_config.secondary_colour);
+		lv_obj_set_width(network_uplink_labels[index], width);
+		lv_obj_set_style_text_align(network_uplink_labels[index],
+			LV_TEXT_ALIGN_CENTER, 0);
+		lv_label_set_long_mode(network_uplink_labels[index], LV_LABEL_LONG_DOT);
+		x += width;
+		if (slot + 1U < visible)
+			x += gap_space + ((int)slot < gap_remainder ? 1 : 0);
+	}
+	if (show_wan) {
+		int y = responsive_row_y(row++, row_count);
+		network_wan_title = create_label(screen, "WAN", content_x, y, ui_label_font(),
 			app_config.accent_colour);
-		network_lan_label = create_label(screen, "--", 55, 55,
+		lv_obj_set_width(network_wan_title, detail_title_width);
+		lv_obj_set_style_text_align(network_wan_title, LV_TEXT_ALIGN_CENTER, 0);
+		int value_x = content_x + detail_title_width + 12;
+		network_wan_value = create_label(screen, "--", value_x, y,
 			ui_label_font(), app_config.primary_colour);
-		lv_obj_set_width(network_lan_label, 221);
+		lv_obj_set_width(network_wan_value,
+			content_x + content_width - value_x);
+		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
+	}
+	if (show_lan) {
+		int y = responsive_row_y(row, row_count);
+		network_lan_title = create_label(screen, "LAN", content_x, y, ui_label_font(),
+			app_config.accent_colour);
+		lv_obj_set_width(network_lan_title, detail_title_width);
+		lv_obj_set_style_text_align(network_lan_title, LV_TEXT_ALIGN_CENTER, 0);
+		int value_x = content_x + detail_title_width + 12;
+		network_lan_label = create_label(screen, "--", value_x, y,
+			ui_label_font(), app_config.primary_colour);
+		lv_obj_set_width(network_lan_label,
+			content_x + content_width - value_x);
 		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
 	}
+	layout_network_detail_rows();
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -1065,6 +1239,257 @@ static lv_obj_t *build_wifi_qr_screen(void)
 	return screen;
 }
 
+static lv_obj_t *create_reset_progress(lv_obj_t *parent, unsigned int fill_colour)
+{
+	lv_obj_t *track = lv_obj_create(parent);
+	lv_obj_set_pos(track, 8, 70);
+	lv_obj_set_size(track, 268, 4);
+	lv_obj_set_style_radius(track, 0, 0);
+	lv_obj_set_style_border_width(track, 0, 0);
+	lv_obj_set_style_pad_all(track, 0, 0);
+	lv_obj_set_style_bg_color(track, colour(app_config.border_colour), 0);
+	lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+	lv_obj_clear_flag(track, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+	lv_obj_t *fill = lv_obj_create(track);
+	lv_obj_set_pos(fill, 0, 0);
+	lv_obj_set_size(fill, 1, 4);
+	lv_obj_set_style_radius(fill, 0, 0);
+	lv_obj_set_style_border_width(fill, 0, 0);
+	lv_obj_set_style_pad_all(fill, 0, 0);
+	lv_obj_set_style_bg_color(fill, colour(fill_colour), 0);
+	lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
+	lv_obj_clear_flag(fill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+	return fill;
+}
+
+static lv_obj_t *create_reset_stage_page(lv_obj_t *parent, unsigned int stage)
+{
+	static const char *const english_stage_names[] = {
+		"NETWORK", "FACTORY", "CANCEL"
+	};
+	static const char *const chinese_stage_names[] = {
+		"网络", "整机", "取消"
+	};
+	unsigned int stage_colours[] = {
+		app_config.accent_colour, app_config.warning_colour, app_config.error_colour
+	};
+	lv_obj_t *page = lv_obj_create(parent);
+	style_screen(page);
+	create_label(page, "RESET", 8, 4, ui_label_font(), app_config.accent_colour);
+	lv_obj_t *stage_name = create_label(page,
+		app_config.chinese ? chinese_stage_names[stage] : english_stage_names[stage],
+		146, 4, small_ui_font(), stage_colours[stage]);
+	lv_obj_set_width(stage_name, 130);
+	lv_obj_set_style_text_align(stage_name, LV_TEXT_ALIGN_RIGHT, 0);
+	create_divider(page, 8, 25, 268, 2);
+	reset_stage_main_labels[stage] = create_label(page, "", 8, 30,
+		small_ui_font(), stage_colours[stage]);
+	reset_stage_detail_labels[stage] = create_label(page, "", 8, 50,
+		small_ui_font(), app_config.secondary_colour);
+	lv_obj_set_width(reset_stage_main_labels[stage], 268);
+	lv_obj_set_width(reset_stage_detail_labels[stage], 268);
+	lv_label_set_long_mode(reset_stage_main_labels[stage], LV_LABEL_LONG_CLIP);
+	lv_label_set_long_mode(reset_stage_detail_labels[stage], LV_LABEL_LONG_CLIP);
+	reset_stage_progress[stage] = create_reset_progress(page, stage_colours[stage]);
+	lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+	return page;
+}
+
+static lv_obj_t *build_reset_screen(void)
+{
+	lv_obj_t *screen = lv_obj_create(NULL);
+	style_screen(screen);
+	for (unsigned int stage = 0; stage < RESET_STAGE_COUNT; ++stage)
+		reset_stage_pages[stage] = create_reset_stage_page(screen, stage);
+	return screen;
+}
+
+enum reset_marker_state {
+	RESET_MARKER_NONE,
+	RESET_MARKER_PRESSED,
+	RESET_MARKER_RELEASED
+};
+
+static uint32_t reset_elapsed_ms(double started, double ended)
+{
+	double elapsed = (ended - started) * 1000.0;
+	if (elapsed < 0.0)
+		elapsed = 0.0;
+	if (elapsed > (double)UINT32_MAX)
+		elapsed = (double)UINT32_MAX;
+	return (uint32_t)elapsed;
+}
+
+static enum reset_marker_state read_reset_button_state(uint32_t *held_ms,
+							uint32_t *released_ms)
+{
+	FILE *file = fopen(RESET_BUTTON_MARKER, "r");
+	if (!file)
+		return RESET_MARKER_NONE;
+	char line[96] = {0};
+	bool valid = fgets(line, sizeof(line), file) != NULL;
+	fclose(file);
+	if (!valid)
+		return RESET_MARKER_NONE;
+	double started = 0.0;
+	double released = 0.0;
+	if (sscanf(line, "released %lf %lf", &started, &released) == 2 &&
+	    started > 0.0 && released >= started) {
+		*held_ms = reset_elapsed_ms(started, released);
+		*released_ms = reset_elapsed_ms(released, monotonic_seconds());
+		return RESET_MARKER_RELEASED;
+	}
+	if (sscanf(line, "%lf", &started) == 1 && started > 0.0) {
+		*held_ms = reset_elapsed_ms(started, monotonic_seconds());
+		*released_ms = 0U;
+		return RESET_MARKER_PRESSED;
+	}
+	return RESET_MARKER_NONE;
+}
+
+static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
+{
+	uint32_t start = stage == 0 ? 0U : stage == 1 ? RESET_NETWORK_MS : RESET_FACTORY_MS;
+	uint32_t end = stage == 0 ? RESET_NETWORK_MS :
+		stage == 1 ? RESET_FACTORY_MS : RESET_CANCEL_MS;
+	bool cancelled = elapsed_ms >= RESET_CANCEL_MS;
+	unsigned int remaining = elapsed_ms < end ?
+		(unsigned int)((end - elapsed_ms + 999U) / 1000U) : 0U;
+	if (stage != reset_visible_stage) {
+		for (unsigned int index = 0; index < RESET_STAGE_COUNT; ++index)
+			set_page_visible(reset_stage_pages[index], index == stage);
+		reset_visible_stage = stage;
+		reset_last_remaining = UINT32_MAX;
+	}
+	if (remaining != reset_last_remaining || cancelled != reset_cancelled) {
+		char detail[96];
+		if (stage == 0) {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("继续按住 Reset", "KEEP HOLDING RESET"));
+			snprintf(detail, sizeof(detail),
+				translated("继续按 %us: 重置网络", "NETWORK RESET IN %us"), remaining);
+		} else if (stage == 1) {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("松开: 重置网络", "RELEASE: RESET NETWORK"));
+			snprintf(detail, sizeof(detail),
+				translated("继续按 %us: 重置整机", "HOLD %us MORE: FACTORY RESET"),
+				remaining);
+		} else if (!cancelled) {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("松开: 重置整机", "RELEASE: FACTORY RESET"));
+			snprintf(detail, sizeof(detail),
+				translated("继续按 %us: 取消操作", "HOLD %us MORE: CANCEL"), remaining);
+		} else {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("操作已取消", "RESET CANCELLED"));
+			snprintf(detail, sizeof(detail), "%s",
+				translated("请松开 Reset 键", "RELEASE THE RESET BUTTON"));
+		}
+		set_label_text_if_changed(reset_stage_detail_labels[stage], detail);
+		reset_last_remaining = remaining;
+		reset_cancelled = cancelled;
+	}
+	uint32_t duration = end - start;
+	uint32_t progress = elapsed_ms > start ? elapsed_ms - start : 0U;
+	if (progress > duration)
+		progress = duration;
+	int32_t width = duration ? (int32_t)(268U * progress / duration) : 268;
+	if (width < 1)
+		width = 1;
+	lv_obj_set_width(reset_stage_progress[stage], width);
+}
+
+static void show_reset_cancel_confirmation(uint32_t elapsed_ms)
+{
+	const unsigned int stage = 2U;
+	if (stage != reset_visible_stage) {
+		for (unsigned int index = 0; index < RESET_STAGE_COUNT; ++index)
+			set_page_visible(reset_stage_pages[index], index == stage);
+		reset_visible_stage = stage;
+		reset_last_remaining = UINT32_MAX;
+	}
+	unsigned int remaining = elapsed_ms < RESET_CONFIRM_MS ?
+		(unsigned int)((RESET_CONFIRM_MS - elapsed_ms + 999U) / 1000U) : 0U;
+	if (remaining != reset_last_remaining || !reset_cancelled) {
+		char detail[96];
+		set_label_text_if_changed(reset_stage_main_labels[stage],
+			translated("操作已取消", "RESET CANCELLED"));
+		snprintf(detail, sizeof(detail),
+			translated("%us 后返回", "RETURNING IN %us"), remaining);
+		set_label_text_if_changed(reset_stage_detail_labels[stage], detail);
+		reset_last_remaining = remaining;
+		reset_cancelled = true;
+	}
+	uint32_t progress = elapsed_ms > RESET_CONFIRM_MS ? RESET_CONFIRM_MS : elapsed_ms;
+	int32_t width = (int32_t)(268U * progress / RESET_CONFIRM_MS);
+	if (width < 1)
+		width = 1;
+	lv_obj_set_width(reset_stage_progress[stage], width);
+}
+
+static void open_reset_overlay(void)
+{
+	if (reset_overlay_active)
+		return;
+	reset_overlay_active = true;
+	lv_anim_delete(dashboard_screen, NULL);
+	page_animation_running = false;
+	drag_tracking = false;
+	drag_moved = false;
+	drag_offset = 0;
+	pending_page_delta = 0;
+	place_pages(0);
+	lv_screen_load(reset_screen);
+}
+
+static void close_reset_overlay(void)
+{
+	if (!reset_overlay_active)
+		return;
+	reset_overlay_active = false;
+	reset_visible_stage = RESET_STAGE_COUNT;
+	reset_last_remaining = UINT32_MAX;
+	reset_cancelled = false;
+	lv_screen_load(dashboard_screen);
+	place_pages(0);
+	if (main_display)
+		lv_display_trigger_activity(main_display);
+}
+
+static void update_reset_button(lv_timer_t *timer)
+{
+	(void)timer;
+	uint32_t held_ms = 0;
+	uint32_t released_ms = 0;
+	enum reset_marker_state state = read_reset_button_state(&held_ms, &released_ms);
+	if (state == RESET_MARKER_NONE) {
+		close_reset_overlay();
+		return;
+	}
+	if (state == RESET_MARKER_RELEASED) {
+		bool cancelled = held_ms < RESET_NETWORK_MS || held_ms >= RESET_CANCEL_MS;
+		if (cancelled && released_ms < RESET_CONFIRM_MS) {
+			open_reset_overlay();
+			if (main_display)
+				lv_display_trigger_activity(main_display);
+			set_backlight(true);
+			show_reset_cancel_confirmation(released_ms);
+			return;
+		}
+		unlink(RESET_BUTTON_MARKER);
+		close_reset_overlay();
+		return;
+	}
+	open_reset_overlay();
+	if (main_display)
+		lv_display_trigger_activity(main_display);
+	set_backlight(true);
+	unsigned int stage = held_ms < RESET_NETWORK_MS ? 0U :
+		held_ms < RESET_FACTORY_MS ? 1U : 2U;
+	show_reset_stage(stage, held_ms);
+}
+
 static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 				 const char *title)
 {
@@ -1101,11 +1526,18 @@ static void create_wifi_band_row(lv_obj_t *parent, unsigned int band, int y,
 static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_WIFI);
-	create_divider(screen, 8, 37, 268, 2);
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_WIFI, "wifi_2g"))
-		create_wifi_band_row(screen, 0, 0, "2.4G");
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_WIFI, "wifi_5g"))
-		create_wifi_band_row(screen, 1, 39, "5G");
+	bool show_2g = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_WIFI, "wifi_2g");
+	bool show_5g = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_WIFI, "wifi_5g");
+	unsigned int count = show_2g + show_5g;
+	if (count == 2)
+		create_divider(screen, 8, 37, 268, 2);
+	unsigned int row = 0;
+	if (show_2g)
+		create_wifi_band_row(screen, 0, count == 2 ? (int)(row++ * 39U) : 19, "2.4G");
+	if (show_5g)
+		create_wifi_band_row(screen, 1, count == 2 ? (int)(row * 39U) : 19, "5G");
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -1136,6 +1568,16 @@ static void openclash_toggle_event(lv_event_t *event)
 static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 {
 	lv_obj_t *screen = create_page(parent, SCREENPLUS_PAGE_OPENCLASH);
+	bool show_rates = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates");
+	bool show_totals = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals");
+	bool show_traffic = show_rates || show_totals;
+	bool show_connections = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections");
+	bool show_resources = screenplus_page_has_field(
+		&app_config, SCREENPLUS_PAGE_OPENCLASH, "resources");
+	bool show_summary = show_connections || show_resources;
 	lv_obj_t *title = create_label(screen, "OPENCLASH", 8, 4, ui_label_font(),
 		app_config.accent_colour);
 	openclash_state_label = create_label(screen, "N/A", 116, 4,
@@ -1157,33 +1599,43 @@ static lv_obj_t *build_openclash_screen(lv_obj_t *parent)
 		LV_OBJ_FLAG_GESTURE_BUBBLE);
 	lv_obj_add_event_cb(openclash_toggle, openclash_toggle_event,
 		LV_EVENT_VALUE_CHANGED, NULL);
-	create_divider(screen, 8, 25, 268, 2);
-	create_divider(screen, 8, 50, 268, 2);
-	openclash_download_measurement = create_transfer_measurement(screen, 8, 29,
-		LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
-	openclash_upload_measurement = create_transfer_measurement(screen, 148, 29,
-		LV_SYMBOL_UPLOAD, app_config.secondary_colour);
-	set_transfer_part_visible(&openclash_download_measurement,
-		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates"),
-		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"));
-	set_transfer_part_visible(&openclash_upload_measurement,
-		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "rates"),
-		screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "totals"));
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "connections")) {
-		create_label(screen, "CONN", 8, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_connections_value = create_label(screen, "--", 52, 55,
+	if (show_traffic || show_summary)
+		create_divider(screen, 8, 25, 268, 2);
+	if (show_traffic && show_summary)
+		create_divider(screen, 8, 50, 268, 2);
+	int traffic_y = show_summary ? 29 : 43;
+	if (show_traffic) {
+		openclash_download_measurement = create_transfer_measurement(screen, 8, traffic_y,
+			LV_SYMBOL_DOWNLOAD, app_config.accent_colour);
+		openclash_upload_measurement = create_transfer_measurement(screen, 148, traffic_y,
+			LV_SYMBOL_UPLOAD, app_config.secondary_colour);
+		set_transfer_part_visible(&openclash_download_measurement, show_rates, show_totals);
+		set_transfer_part_visible(&openclash_upload_measurement, show_rates, show_totals);
+	}
+	int summary_y = show_traffic ? 55 : 43;
+	unsigned int summary_count = (show_connections ? 1U : 0U) +
+		(show_resources ? 2U : 0U);
+	int summary_x = (284 - (int)(summary_count * 90U)) / 2;
+	if (show_connections) {
+		create_label(screen, "CONN", summary_x, summary_y,
+			ui_detail_font(), app_config.secondary_colour);
+		openclash_connections_value = create_label(screen, "--", summary_x + 44, summary_y,
 			ui_detail_font(), app_config.primary_colour);
 		set_fixed_text(openclash_connections_value, 36, LV_TEXT_ALIGN_RIGHT);
+		summary_x += 90;
 	}
-	if (screenplus_page_has_field(&app_config, SCREENPLUS_PAGE_OPENCLASH, "resources")) {
-		create_label(screen, "CPU", 99, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_cpu_value = create_label(screen, "--%", 133, 55,
+	if (show_resources) {
+		create_label(screen, "CPU", summary_x, summary_y,
+			ui_detail_font(), app_config.secondary_colour);
+		openclash_cpu_value = create_label(screen, "--%", summary_x + 34, summary_y,
 			ui_detail_font(), app_config.primary_colour);
 		set_fixed_text(openclash_cpu_value, 47, LV_TEXT_ALIGN_RIGHT);
-		create_label(screen, "MEM", 190, 55, ui_detail_font(), app_config.secondary_colour);
-		openclash_memory_value = create_label(screen, "--", 225, 55,
+		summary_x += 90;
+		create_label(screen, "MEM", summary_x, summary_y,
+			ui_detail_font(), app_config.secondary_colour);
+		openclash_memory_value = create_label(screen, "--", summary_x + 35, summary_y,
 			ui_detail_font(), app_config.primary_colour);
-		openclash_memory_unit = create_label(screen, "MB", 254, 55,
+		openclash_memory_unit = create_label(screen, "MB", summary_x + 64, summary_y,
 			ui_detail_font(), app_config.secondary_colour);
 		set_fixed_text(openclash_memory_value, 27, LV_TEXT_ALIGN_RIGHT);
 		set_fixed_text(openclash_memory_unit, 22, LV_TEXT_ALIGN_LEFT);
@@ -1252,6 +1704,7 @@ static void apply_system_snapshot(lv_timer_t *timer)
 			strcpy(text, "OFF  NO UPLINK");
 		set_label_text_if_changed(network_wan_value, text);
 	}
+	layout_network_detail_rows();
 
 	const struct wifi_info *wifi_bands[2] = { &snapshot.wifi_2g, &snapshot.wifi_5g };
 	for (unsigned int band = 0; band < 2; ++band)
@@ -1387,6 +1840,7 @@ static void build_ui(void)
 	wifi_screen = build_wifi_screen(dashboard_screen);
 	wifi_qr_screen = build_wifi_qr_screen();
 	openclash_screen = build_openclash_screen(dashboard_screen);
+	reset_screen = build_reset_screen();
 	screens_by_page[SCREENPLUS_PAGE_HOME] = clock_screen;
 	screens_by_page[SCREENPLUS_PAGE_STATUS] = status_screen;
 	screens_by_page[SCREENPLUS_PAGE_TRAFFIC] = traffic_screen;
@@ -1416,13 +1870,19 @@ static void build_ui(void)
 		screens[screen_count++] = clock_screen;
 	}
 	current_screen_index = 0;
+	bool requested_page_found = false;
 	if (requested_start_page >= 0) {
 		for (unsigned int index = 0; index < screen_count; ++index) {
 			if (screens[index] == screens_by_page[requested_start_page]) {
 				current_screen_index = index;
+				requested_page_found = true;
 				break;
 			}
 		}
+	}
+	if (!requested_page_found && requested_start_index >= 0) {
+		unsigned int index = (unsigned int)requested_start_index;
+		current_screen_index = index < screen_count ? index : screen_count - 1U;
 	}
 	place_pages(0);
 	lv_screen_load(dashboard_screen);
@@ -1430,6 +1890,7 @@ static void build_ui(void)
 	lv_timer_create(apply_metrics, 100, NULL);
 	lv_timer_create(apply_system_snapshot, 500, NULL);
 	lv_timer_create(manage_idle_state, 250, NULL);
+	lv_timer_create(update_reset_button, 50, NULL);
 	if (app_config.auto_carousel)
 		lv_timer_create(auto_carousel, app_config.carousel_interval_seconds * 1000U, NULL);
 	update_clock(NULL);
@@ -1521,6 +1982,15 @@ int main(int argc, char **argv)
 	if (screenplus_config_load(&app_config, options.config) != 0)
 		fprintf(stderr, "screenplus: cannot read configuration %s: %s\n",
 			options.config, strerror(errno));
+	if (!app_config.enabled && !options.config_once && !options.metrics_once &&
+	    !options.system_info_once) {
+		unsetenv("SCREENPLUS_RELOAD_PAGE");
+		unsetenv("SCREENPLUS_RELOAD_INDEX");
+		execl("/usr/libexec/screenplus-run", "screenplus-run", (char *)NULL);
+		fprintf(stderr, "screenplus: disabled-mode handoff failed: %s\n",
+			strerror(errno));
+		return 1;
+	}
 	if (screenplus_timezone_load(&app_config, "/etc/config/system") == 0 &&
 	    app_config.timezone_rule[0]) {
 		setenv("TZ", app_config.timezone_rule, 1);
@@ -1531,6 +2001,25 @@ int main(int argc, char **argv)
 	else
 		options.rotation = app_config.rotation;
 	requested_start_page = options.start_page;
+	const char *reload_page = getenv("SCREENPLUS_RELOAD_PAGE");
+	if (reload_page && reload_page[0]) {
+		for (int page = 0; page < SCREENPLUS_PAGE_COUNT; ++page) {
+			if (strcmp(reload_page,
+			    screenplus_page_name((enum screenplus_page_id)page)) == 0) {
+				requested_start_page = page;
+				break;
+			}
+		}
+	}
+	const char *reload_index = getenv("SCREENPLUS_RELOAD_INDEX");
+	if (reload_index && reload_index[0]) {
+		char *end = NULL;
+		long index = strtol(reload_index, &end, 10);
+		if (end && *end == '\0' && index >= 0 && index < SCREENPLUS_PAGE_COUNT)
+			requested_start_index = (int)index;
+	}
+	unsetenv("SCREENPLUS_RELOAD_PAGE");
+	unsetenv("SCREENPLUS_RELOAD_INDEX");
 	struct sigaction action = { .sa_handler = on_signal };
 	sigemptyset(&action.sa_mask);
 	sigaction(SIGINT, &action, NULL);
@@ -1717,6 +2206,18 @@ int main(int argc, char **argv)
 		sleep_milliseconds(wait);
 	}
 
+	if (reload_requested && current_screen_index < screen_count) {
+		for (int page = 0; page < SCREENPLUS_PAGE_COUNT; ++page) {
+			if (screens[current_screen_index] == screens_by_page[page]) {
+				setenv("SCREENPLUS_RELOAD_PAGE",
+					screenplus_page_name((enum screenplus_page_id)page), 1);
+				break;
+			}
+		}
+		char index[16];
+		snprintf(index, sizeof(index), "%u", current_screen_index);
+		setenv("SCREENPLUS_RELOAD_INDEX", index, 1);
+	}
 	running = 0;
 	if (metrics_worker_started)
 		pthread_join(metrics_worker_thread, NULL);

@@ -1,0 +1,39 @@
+#!/bin/sh
+
+PROG=/usr/sbin/screenplus
+sleep_pid=
+
+wake_for_reload() {
+	[ -n "$sleep_pid" ] && kill "$sleep_pid" 2>/dev/null
+}
+
+stop_waiting() {
+	wake_for_reload
+	exit 0
+}
+
+trap wake_for_reload HUP
+trap stop_waiting INT TERM
+
+while :; do
+	enabled="$(uci -q get screenplus.main.enabled)"
+	[ -n "$enabled" ] || enabled=1
+	if [ "$enabled" = "1" ]; then
+		if [ -x /etc/init.d/gl_screen ]; then
+			/etc/init.d/gl_screen disable 2>/dev/null
+			/etc/init.d/gl_screen stop 2>/dev/null
+		fi
+		exec "$PROG"
+		exit 1
+	fi
+
+	if [ -x /etc/init.d/gl_screen ]; then
+		/etc/init.d/gl_screen enable 2>/dev/null
+		/etc/init.d/gl_screen start 2>/dev/null
+	fi
+
+	/bin/sleep 2147483647 &
+	sleep_pid=$!
+	wait "$sleep_pid"
+	sleep_pid=
+done

@@ -10,7 +10,7 @@ var HEIGHT = 76;
 
 function validateColour(section, value) {
 	return value == null || value === '' || /^#[0-9a-fA-F]{6}$/.test(value) ||
-		_('Enter a colour as #RRGGBB.');
+		_('Use a six-digit colour value, for example #37F59A.');
 }
 
 function convertImage(file) {
@@ -55,7 +55,7 @@ function convertImage(file) {
 		};
 		image.onerror = function() {
 			URL.revokeObjectURL(objectUrl);
-			reject(new Error(_('The selected file is not a readable image.')));
+			reject(new Error(_('This image could not be opened. Please choose another file.')));
 		};
 		image.src = objectUrl;
 	});
@@ -64,7 +64,7 @@ function convertImage(file) {
 function rgb565Preview(base64) {
 	var raw = atob(base64.replace(/\s/g, ''));
 	if (raw.length !== WIDTH * HEIGHT * 2)
-		throw new Error(_('The installed background has an invalid size.'));
+		throw new Error(_('This background could not be previewed. Try uploading it again.'));
 	var canvas = document.createElement('canvas');
 	canvas.width = WIDTH;
 	canvas.height = HEIGHT;
@@ -159,7 +159,7 @@ return view.extend({
 		if (!file)
 			return;
 		if (file.size > 10 * 1024 * 1024) {
-			ui.addNotification(null, E('p', {}, _('The source image must be 10 MiB or smaller.')));
+			ui.addNotification(null, E('p', {}, _('Choose an image smaller than 10 MB.')));
 			input.value = '';
 			return;
 		}
@@ -172,11 +172,11 @@ return view.extend({
 			return fs.exec(BACKGROUND_HELPER, [ 'install', page ]);
 		}).then(function(result) {
 			if (!result || result.code !== 0)
-				throw new Error(result && result.stderr || _('Background installation failed.'));
+				throw new Error(result && result.stderr || _('The background could not be saved.'));
 			self.setBackgroundPreview(page, convertedPreview);
 			self.setBackgroundModeControl(page === 'global' ? 'global' : 'page');
 			ui.addNotification(null, E('p', {},
-				_('Background installed and applied immediately.')), 'info');
+				_('Your new background is now in use.')), 'info');
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
 		}).finally(function() {
@@ -191,11 +191,11 @@ return view.extend({
 		button.disabled = true;
 		return fs.exec(BACKGROUND_HELPER, [ 'remove', page ]).then(function(result) {
 			if (!result || result.code !== 0)
-				throw new Error(result && result.stderr || _('Background removal failed.'));
+				throw new Error(result && result.stderr || _('The background could not be removed.'));
 			self.setBackgroundPreview(page, null);
 			if (page === 'global')
 				self.setBackgroundModeControl('page');
-			ui.addNotification(null, E('p', {}, _('Uploaded background removed.')), 'info');
+			ui.addNotification(null, E('p', {}, _('The custom background has been removed.')), 'info');
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
 		}).finally(function() {
@@ -214,7 +214,7 @@ return view.extend({
 			'class': 'btn cbi-button cbi-button-negative',
 			'style': 'display:none',
 			'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
-		}, [ _('Remove') ]);
+		}, [ _('Remove background') ]);
 		this.loadBackgroundPreview(page, previewContainer, removeButton);
 		return E('div', { 'class': 'cbi-value' }, [
 			E('label', { 'class': 'cbi-value-title' }, [ title ]),
@@ -232,91 +232,91 @@ return view.extend({
 	},
 
 	render: function() {
-		var map = new form.Map('screenplus', _('Appearance'),
-			_('Theme, primary and secondary colours define the visual hierarchy. Healthy states reuse the theme colour and missing connections reuse the secondary colour. The remaining state colours are only used for their named conditions. Leave a value empty to restore its built-in default. Changes apply when the service reloads.'));
-		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Theme'));
+		var map = new form.Map('screenplus', _('Theme and backgrounds'),
+			_('Personalise the colours and background pictures used across ScreenPlus. Clear a colour value to restore the original.'));
+		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Colours'));
 		section.anonymous = true;
 		section.addremove = false;
-		section.tab('palette', _('Core palette'));
-		section.tab('states', _('Connection states'));
-		section.tab('backgrounds', _('Background images'));
+		section.tab('palette', _('Theme colours'));
+		section.tab('states', _('Connection colours'));
+		section.tab('backgrounds', _('Background settings'));
 
 		var option = section.taboption('palette', form.Value, 'accent', _('Theme colour'));
 		option.default = '#37f59a';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('Page headings, the home accent, enabled switches, download graphs and healthy or active states.');
+		option.description = _('Used for headings, highlights, active switches and healthy connections.');
 
-		option = section.taboption('palette', form.Value, 'primary', _('Primary colour'));
+		option = section.taboption('palette', form.Value, 'primary', _('Main text colour'));
 		option.default = '#ffffff';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('Clock, main values, addresses, SSIDs, passwords and other high-priority content.');
+		option.description = _('Used for the clock, important values, addresses, Wi-Fi names and passwords.');
 
-		option = section.taboption('palette', form.Value, 'secondary', _('Secondary colour'));
+		option = section.taboption('palette', form.Value, 'secondary', _('Secondary text colour'));
 		option.default = '#dcecff';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('Supporting labels, units, upload graphs, disabled Wi-Fi and missing connections.');
+		option.description = _('Used for labels, units, supporting information and unavailable connections.');
 
-		option = section.taboption('palette', form.Value, 'background', _('Background colour'));
+		option = section.taboption('palette', form.Value, 'background', _('Page background colour'));
 		option.default = '#030912';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('Base colour behind every page when no custom image covers it.');
+		option.description = _('Shown behind each page when no custom picture is used.');
 
 		option = section.taboption('palette', form.Value, 'border', _('Divider colour'));
 		option.default = '#3b424a';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('Section separators and the inactive switch track.');
+		option.description = _('Used for separators and the track of an inactive switch.');
 
-		option = section.taboption('states', form.Value, 'standby', _('Available but disabled colour'));
+		option = section.taboption('states', form.Value, 'standby', _('Available but not enabled'));
 		option.default = '#4b9fff';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('A connection or device is present and configured, but disabled.');
+		option.description = _('The connection or device is available, but is not currently enabled.');
 
-		option = section.taboption('states', form.Value, 'warning', _('Enabled but offline colour'));
+		option = section.taboption('states', form.Value, 'warning', _('Connected without internet'));
 		option.default = '#ffdc55';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('A connection is enabled or linked but has no working internet access.');
+		option.description = _('The connection is enabled and linked, but cannot reach the internet.');
 
-		option = section.taboption('states', form.Value, 'error', _('Fault colour'));
+		option = section.taboption('states', form.Value, 'error', _('Error state'));
 		option.default = '#ff5c70';
 		option.rmempty = true;
 		option.validate = validateColour;
-		option.description = _('A service reports an explicit error or failed state.');
+		option.description = _('Used when a service reports a problem.');
 
-		option = section.taboption('backgrounds', form.Value, 'overlay_opacity', _('Background overlay opacity'));
+		option = section.taboption('backgrounds', form.Value, 'overlay_opacity', _('Background dimming'));
 		option.datatype = 'range(0,100)';
 		option.default = '35';
 		option.rmempty = true;
-		option.description = _('Percentage used when a custom background image is selected.');
+		option.description = _('Darkens custom pictures so text stays easy to read. A higher value looks darker.');
 
-		option = section.taboption('backgrounds', form.ListValue, 'background_mode', _('Background image mode'));
-		option.value('page', _('Use a separate background for each page'));
-		option.value('global', _('Use one background for all pages'));
+		option = section.taboption('backgrounds', form.ListValue, 'background_mode', _('Background style'));
+		option.value('page', _('Different picture on each page'));
+		option.value('global', _('Same picture on every page'));
 		option.default = 'page';
 		option.rmempty = false;
-		option.description = _('Uploading a global or page image automatically selects the matching mode and applies it immediately.');
+		option.description = _('Uploading a picture below automatically selects the matching style.');
 
 		return map.render().then(L.bind(function(mapNode) {
 			return E([], [
 				mapNode,
 				E('div', { 'class': 'cbi-map' }, [
-					E('h2', {}, [ _('Custom backgrounds') ]),
+					E('h2', {}, [ _('Background pictures') ]),
 					E('div', { 'class': 'cbi-map-descr' }, [
-						_('Images are cropped to 284 × 76 in the browser. Uploading an image immediately applies it; no second selection is required.')
+						_('For an exact fit, use a 284 × 76 px PNG, JPEG, WebP or BMP image. Other sizes are centre-cropped to fit; the maximum file size is 10 MB. New pictures take effect immediately.')
 					]),
 					E('div', { 'class': 'cbi-section' }, [
-						this.renderUploader('global', _('Global background (all pages)')),
-						this.renderUploader('home', _('Home / clock')),
-						this.renderUploader('traffic', _('Network traffic')),
-						this.renderUploader('status', _('Device status')),
-						this.renderUploader('wifi', _('Wi-Fi credentials')),
-						this.renderUploader('network', _('LAN / WAN connections')),
+						this.renderUploader('global', _('All pages')),
+						this.renderUploader('home', _('Home')),
+						this.renderUploader('traffic', _('Live traffic')),
+						this.renderUploader('status', _('System status')),
+						this.renderUploader('wifi', _('Wi-Fi')),
+						this.renderUploader('network', _('Network connections')),
 						this.renderUploader('openclash', _('OpenClash'))
 					])
 				])

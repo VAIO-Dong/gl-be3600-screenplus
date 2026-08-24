@@ -4,44 +4,21 @@ START=81
 STOP=19
 USE_PROCD=1
 
-PROG=/usr/sbin/screenplus
-
 start_service() {
-	local enabled
-	local rotation
 	local brightness
 	/usr/libexec/screenplus-migrate 2>/dev/null
 	config_load screenplus
-	config_get_bool enabled main enabled 1
-	if [ "$enabled" -ne 1 ]; then
-		if [ -x /etc/init.d/gl_screen ]; then
-			/etc/init.d/gl_screen enable 2>/dev/null
-			/etc/init.d/gl_screen start 2>/dev/null
-		fi
-		return 0
-	fi
-	config_get rotation main rotation 90
 	config_get brightness main brightness 5
-	case "$rotation" in
-		90|270) ;;
-		*) rotation=90 ;;
-	esac
 	case "$brightness" in
 		''|*[!0-9]*) brightness=5 ;;
 	esac
 	[ "$brightness" -ge 1 ] 2>/dev/null || brightness=1
 	[ "$brightness" -le 11 ] 2>/dev/null || brightness=11
 
-	# Only one process may own the framebuffer and touchscreen. The official
-	# package remains installed so rollback does not require a firmware image.
-	if /etc/init.d/gl_screen enabled 2>/dev/null; then
-		/etc/init.d/gl_screen disable
-	fi
-	/etc/init.d/gl_screen stop 2>/dev/null
 	echo "$brightness" > /sys/class/backlight/soc:backlight/brightness 2>/dev/null
 
 	procd_open_instance
-	procd_set_param command "$PROG" --rotation "$rotation"
+	procd_set_param command /usr/libexec/screenplus-run
 	procd_set_param respawn 5 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1
@@ -50,8 +27,7 @@ start_service() {
 }
 
 reload_service() {
-	stop
-	start
+	procd_send_signal screenplus
 }
 
 service_triggers() {

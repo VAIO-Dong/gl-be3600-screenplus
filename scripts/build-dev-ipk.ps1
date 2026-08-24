@@ -161,6 +161,9 @@ $dataEntries = @(
     @{ Name='./etc/config/screenplus'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus.config')) },
 	@{ Name='./etc/gl-switch.d'; Type='directory'; Mode=493; Content=$null },
 	@{ Name='./etc/gl-switch.d/screenplus.sh'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'ScreenPlus.sh')) },
+	@{ Name='./etc/hotplug.d'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./etc/hotplug.d/button'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./etc/hotplug.d/button/99-screenplus-reset'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot '99-screenplus-reset')) },
     @{ Name='./etc/init.d'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./etc/init.d/screenplus'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus.init')) },
     @{ Name='./usr'; Type='directory'; Mode=493; Content=$null },
@@ -168,11 +171,16 @@ $dataEntries = @(
 	@{ Name='./usr/libexec/screenplus-background'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-background')) },
 	@{ Name='./usr/libexec/screenplus-diagnostics'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-diagnostics')) },
 	@{ Name='./usr/libexec/screenplus-migrate'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-migrate')) },
+	@{ Name='./usr/libexec/screenplus-run'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-run')) },
+	@{ Name='./usr/libexec/screenplus-reset-threshold'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-reset-threshold')) },
 	@{ Name='./usr/libexec/screenplus-toggle-ui'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-toggle-ui')) },
 	@{ Name='./usr/libexec/screenplus-toggle-ui.lua'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-toggle-ui.lua')) },
 	@{ Name='./usr/share'; Type='directory'; Mode=493; Content=$null },
 	@{ Name='./usr/share/screenplus'; Type='directory'; Mode=493; Content=$null },
 	@{ Name='./usr/share/screenplus/backgrounds'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./usr/share/licenses'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./usr/share/licenses/screenplus'; Type='directory'; Mode=493; Content=$null },
+	@{ Name='./usr/share/licenses/screenplus/OFL-NotoSansSC.txt'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $repositoryRoot 'docs\fonts\OFL-NotoSansSC.txt')) },
     @{ Name='./usr/share/luci'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./usr/share/luci/menu.d'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./usr/share/luci/menu.d/luci-app-screenplus.json'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'root\usr\share\luci\menu.d\luci-app-screenplus.json')) },
@@ -186,10 +194,10 @@ $dataEntries = @(
     @{ Name='./www/luci-static/resources'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./www/luci-static/resources/view'; Type='directory'; Mode=493; Content=$null },
     @{ Name='./www/luci-static/resources/view/screenplus'; Type='directory'; Mode=493; Content=$null },
-    @{ Name='./www/luci-static/resources/view/screenplus/general.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\general.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/pages.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\pages.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/appearance.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\appearance.js')) },
-    @{ Name='./www/luci-static/resources/view/screenplus/diagnostics.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\diagnostics.js')) }
+    @{ Name='./www/luci-static/resources/view/screenplus/general-v112.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\general-v112.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/pages-v113.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\pages-v113.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/appearance-v113.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\appearance-v113.js')) },
+    @{ Name='./www/luci-static/resources/view/screenplus/diagnostics-v112.js'; Type='file'; Mode=420; Content=(Get-Bytes (Join-Path $luciRoot 'htdocs\luci-static\resources\view\screenplus\diagnostics-v112.js')) }
 )
 New-UstarGzip $dataEntries $dataArchive
 

@@ -1,0 +1,32 @@
+#!/bin/sh
+
+[ "$BUTTON" = "reset" ] || exit 0
+
+marker=/tmp/screenplus-reset-button
+temporary="$marker.$$"
+
+case "$ACTION" in
+	pressed)
+		read -r uptime _ < /proc/uptime || exit 0
+		umask 077
+		printf '%s\n' "$uptime" > "$temporary" || exit 0
+		mv -f "$temporary" "$marker"
+		;;
+	released)
+		if [ -f "$marker" ]; then
+			read -r started _ < "$marker" || started=
+			read -r released _ < /proc/uptime || released=
+			if [ -n "$started" ] && [ -n "$released" ]; then
+				umask 077
+				printf 'released %s %s\n' "$started" "$released" > "$temporary" &&
+					mv -f "$temporary" "$marker"
+			else
+				rm -f "$marker" "$temporary"
+			fi
+		else
+			rm -f "$temporary"
+		fi
+		;;
+esac
+
+exit 0

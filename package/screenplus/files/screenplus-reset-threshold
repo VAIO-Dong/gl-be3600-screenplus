@@ -1,0 +1,47 @@
+#!/bin/sh
+
+set -eu
+
+action="${1:-}"
+reset_script=/etc/rc.button/reset
+marker=/usr/share/screenplus/reset-threshold-16
+temporary=''
+
+cleanup() {
+	[ -z "$temporary" ] || rm -f "$temporary"
+}
+trap cleanup EXIT INT TERM
+
+restore_threshold() {
+	temporary="$(mktemp /etc/rc.button/.screenplus-reset.XXXXXX)"
+	sed 's/\[ "$SEEN" -ge 16 \]/[ "$SEEN" -ge 20 ]/' \
+		"$reset_script" > "$temporary"
+	cmp -s "$temporary" "$reset_script" && return 1
+	chmod 0755 "$temporary"
+	mv -f "$temporary" "$reset_script"
+	temporary=''
+}
+
+case "$action" in
+	restore)
+		[ -f "$marker" ] || exit 0
+		if [ -f "$reset_script" ] && grep -Fq '[ "$SEEN" -ge 16 ]' "$reset_script"; then
+			restore_threshold || true
+		fi
+		rm -f "$marker"
+		;;
+	status)
+		if [ -f "$reset_script" ] && grep -Fq '[ "$SEEN" -ge 20 ]' "$reset_script"; then
+			echo 20
+		elif [ -f "$reset_script" ] && grep -Fq '[ "$SEEN" -ge 16 ]' "$reset_script"; then
+			echo 16
+		else
+			echo unknown
+			exit 1
+		fi
+		;;
+	*)
+		echo 'usage: screenplus-reset-threshold restore|status' >&2
+		exit 2
+		;;
+esac

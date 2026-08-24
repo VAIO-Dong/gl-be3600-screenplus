@@ -1,24 +1,10 @@
 # ScreenPlus for GL-BE3600
 
-> 更适合中国宝宝体质的 BE3600 屏幕。
-
-ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。它直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。
-
-它不是给官方屏幕“换个皮肤”，而是一套独立的原生服务；同时保留官方 `gl_screen`，随时可以切回去。
+ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。网络速率优先从 NSS/PPE 数据面计数器读取，不需要关闭硬件加速；不可用时自动回退到内核网卡计数器。屏幕支持翻转，壁挂安装时也能正常操作。
 
 <p align="center">
   <img src="docs/images/home.png" width="568" alt="ScreenPlus 首页">
 </p>
-
-## 为什么做 ScreenPlus
-
-路由器的屏幕不大，所以比起堆满信息，ScreenPlus 更在意三件事：
-
-- 重要信息一眼就能看到，字体、间距和层级适合这块小屏幕。
-- 实时网络速率不会为了统计而破坏 Qualcomm NSS/PPE 硬件加速。
-- 页面不是写死的：顺序、内容、主题色和背景都可以在 LuCI 里调整。
-
-ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，再回退到标准内核 netdevice statistics。它不依赖关闭 flow offloading，也不需要把整机流量绕进软件转发路径。
 
 ## 页面一览
 
@@ -30,7 +16,7 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
   <img src="docs/images/home.png" width="568" alt="首页时间和日期">
 </p>
 
-只保留时间、日期和星期，简单干净。可以选择显示秒、时区，也可以翻转屏幕方向。
+只保留时间、日期和星期，简单干净。可以选择显示秒、时区。
 
 ### 实时速率
 
@@ -38,7 +24,7 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
   <img src="docs/images/traffic.png" width="568" alt="实时网络速率和连接数">
 </p>
 
-固定位置显示上行、下行和实时连接数，右侧是最近 30 秒的流量趋势。数值变化不会挤动布局，也不会为了监控速率影响硬件加速。
+固定位置显示上行、下行和实时连接数，右侧是最近 30 秒的流量趋势。数字和单位使用固定位置，实时变化时不会挤动布局。
 
 ### 系统状态
 
@@ -50,17 +36,13 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
 
 ### Wi-Fi
 
-显示 2.4 GHz 和 5 GHz 的 SSID、开关状态与密码。密码支持隐藏、点击显示、始终显示和二维码模式；慢速滑动不会误触发二维码。
-
-> 为避免把真实 Wi-Fi 密码提交到仓库，README 不放这一页的设备截图。
+显示 2.4 GHz 和 5 GHz 的 SSID、开关状态与密码。密码支持隐藏、点击显示、始终显示和二维码模式；在页面内长按可以打开二维码，开始滑动后不会误触发。
 
 ### 网络连接
 
 <p align="center">
   <img src="docs/images/network.png" width="568" alt="WAN LAN 和四种联网方式">
 </p>
-
-目前测试能正常显示以太网WAN, Wi-Fi Repeater, USB Tethering的速率显示。能显示实时的连接数和OpenClash信息，页面信息与主题色可配置，可以自定义每一页的背景，可以通过边上的拨动开关实现官方屏幕和ScreenPlus的一键切换。
 
 页面会同时展示四种 WAN 来源的状态：
 
@@ -69,7 +51,7 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
 - USB Tethering
 - Cellular
 
-下方显示当前 WAN 类型、WAN IP 和 LAN IP。颜色含义保持统一：灰色是不存在或未连接，蓝色是存在但未启用，黄色是已启用但无法联网，主题色表示连接正常。
+下方显示当前 WAN 类型、WAN IP 和 LAN IP。灰色表示接口不存在或没有连接，蓝色表示存在但没有启用，黄色表示已经启用但无法联网，主题色表示连接正常。
 
 ### OpenClash
 
@@ -78,6 +60,17 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
 </p>
 
 显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash；启动或停止过程中会显示明确的“启动中 / 停止中”状态，并暂时锁定开关，避免重复操作。
+
+## Reset 按键提示
+
+按住机身 Reset 键时，屏幕会同步显示当前阶段和倒计时：
+
+- 3 秒内松开：立即显示操作已取消，3 秒后返回原页面
+- 3 秒以上、8 秒内：松开后重置网络
+- 8 秒以上、20 秒内：松开后恢复整机设置
+- 超过 20 秒：取消操作
+
+时间规则跟随设备官方设置，ScreenPlus 不会修改系统原本的重置时长。
 
 ## LuCI 配置
 
@@ -94,7 +87,9 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
 - 主题色、主色、次要色、背景色、分割线和状态颜色
 - 全局背景，或者每一页独立的背景图
 
-背景图在浏览器里居中裁切为 284 × 76，再转换成固定大小的 RGB565 文件。没有开放任意服务器路径，上传后立即应用；未设置时也不会显示坏掉的图片占位。
+Pages and content 使用六个页面 Tab，页面顺序单独放在上方。隐藏页面内容后，屏幕会按当前组合重新布局；保存设置时保持在正在查看的屏幕页面，不会强制回到首页。
+
+背景图建议使用 284 × 76 px 的 PNG、JPEG、WebP 或 BMP，最大 10 MB。其他尺寸会在浏览器里居中裁切，再转换成固定大小的 RGB565 文件，上传后立即应用。没有设置背景时不显示预览占位。
 
 ## 官方屏幕一键切换
 
@@ -110,17 +105,13 @@ ScreenPlus 优先读取 NSS 数据平面的网卡计数器；NSS 不可用时，
 - GL.iNet OpenWrt 23.05-SNAPSHOT
 - 架构：`aarch64_cortex-a53_neon-vfpv4`
 
-前往 [Releases](https://github.com/VAIO-Dong/gl-be3600-screenplus/releases) 下载最新的单一 IPK，然后直接通过网页安装：
+前往 [Releases](https://github.com/VAIO-Dong/gl-be3600-screenplus/releases) 下载最新的单一 IPK，上传到路由器后通过 SSH 安装：
 
-1. 登录 GL.iNet 官方管理页面，进入 **系统 → 高级设置**。
-2. 点击进入 LuCI 高级管理页面。
-3. 在 LuCI 中进入 **系统 → 软件包**。
-4. 点击 **上传软件包…**，选择下载好的
-   `screenplus_<version>-1_aarch64_cortex-a53_neon-vfpv4.ipk`。
-5. 上传完成后确认安装，等待页面提示安装成功。
-6. 刷新 LuCI，在 **系统 → ScreenPlus** 中调整页面和显示设置。
+```sh
+opkg install screenplus_<version>-1_aarch64_cortex-a53_neon-vfpv4.ipk
+```
 
-一个 IPK 已经包含屏幕服务、LuCI 页面、菜单和 RPC 权限，不需要 SSH，也不需要再单独安装 `luci-app-screenplus`。
+一个 IPK 已经包含屏幕服务、LuCI 页面、菜单和 RPC 权限，不需要再单独安装 `luci-app-screenplus`。
 
 > 项目目前主要在 GL-BE3600 原厂固件上开发和实机验证。升级或安装前，建议保留配置备份。
 
@@ -167,13 +158,6 @@ dist/screenplus_<version>-1_aarch64_cortex-a53_neon-vfpv4.ipk
 - 字体覆盖检查和硬件测试程序
 
 详细方法见 [设备测试文档](docs/DEVICE-TESTING.md) 和 [硬件记录](docs/HARDWARE.md)。如果你在其他固件版本、不同网络接入方式或不同 OpenClash 版本上测试，欢迎提交 Issue 或 PR。
-
-## 隐私与安全
-
-- Wi-Fi 密码只在渲染对应页面时读取，不写入 ScreenPlus 配置或诊断信息。
-- OpenClash secret 只保留在进程内存，并且只访问回环地址。
-- 背景上传只接受固定页面名和固定尺寸的 RGB565 资源。
-- 实时采样数据保留在内存，不持续写入闪存。
 
 ## License
 

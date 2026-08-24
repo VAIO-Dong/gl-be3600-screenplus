@@ -5,6 +5,8 @@
 /etc/init.d/gl_screen stop 2>/dev/null
 /etc/init.d/gl_screen disable 2>/dev/null
 /usr/libexec/screenplus-migrate 2>/dev/null
+/usr/libexec/screenplus-reset-threshold restore 2>/dev/null || \
+	logger -t screenplus "legacy reset threshold change was not restored"
 rm -f /etc/gl-switch.d/ScreenPlus.sh
 if [ "$(uci -q get switch-button.@main[0].func)" = "ScreenPlus" ]; then
 	uci set switch-button.@main[0].func=screenplus
@@ -14,7 +16,7 @@ fi
 	logger -t screenplus "native Toggle frontend patch was not applied"
 /etc/init.d/screenplus enable
 /etc/init.d/screenplus start
-rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/rpcd restart 2>/dev/null
 if [ "$(uci -q get switch-button.@main[0].func)" = "screenplus" ] &&
    [ -x /etc/init.d/gl_switch_button_check ]; then

@@ -7,6 +7,6 @@ if [ -x /etc/init.d/gl_screen ]; then
 	/etc/init.d/gl_screen enable
 	/etc/init.d/gl_screen start
 fi
-rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/rpcd restart 2>/dev/null
 exit 0
