@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=screenplus
-PKG_VERSION:=1.1.3
+PKG_VERSION:=1.1.4
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT OFL-1.1
 PKG_SOURCE_PROTO:=git

@@ -21,7 +21,9 @@ normal logical landscape orientation is the 90-degree mapping:
 `native_x = logical_y`, `native_y = 283 - logical_x`.
 
 The 270-degree mapping is a valid flipped orientation and remains available as
-a LuCI option. It is not only a development-test setting.
+a LuCI option. It is not only a development-test setting. Touch keeps the same
+native-panel calibration for both orientations so LVGL can rotate the input and
+display together.
 
 ## Hardware probe pattern
 

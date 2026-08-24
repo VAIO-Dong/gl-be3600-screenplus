@@ -2161,14 +2161,13 @@ int main(int argc, char **argv)
 		/*
 		 * The touch panel is mounted 90 degrees counter-clockwise relative to
 		 * the old vendor mapping. Keep the axes unswapped so physical horizontal
-		 * motion drives LVGL's horizontal page axis. The flipped display needs
-		 * both calibrated axes reversed.
+		 * motion drives LVGL's horizontal page axis. Use the same native-panel
+		 * calibration in both orientations: LVGL rotates input points together
+		 * with the display, so reversing calibration here would cancel that
+		 * rotation and make flipped gestures move opposite to the animation.
 		 */
 		lv_evdev_set_swap_axes(touch, false);
-		if (options.rotation == 270)
-			lv_evdev_set_calibration(touch, 75, 283, 0, 0);
-		else
-			lv_evdev_set_calibration(touch, 0, 0, 75, 283);
+		lv_evdev_set_calibration(touch, 0, 0, 75, 283);
 		lv_indev_set_display(touch, display);
 	}
 

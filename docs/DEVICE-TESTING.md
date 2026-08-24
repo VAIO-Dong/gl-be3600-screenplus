@@ -10,7 +10,9 @@ The Hynitron CST816X driver reports both absolute axes as 0..240. Those ioctl
 ranges do not describe the GL-BE3600 panel orientation and must not be passed
 through LVGL unchanged. ScreenPlus keeps the axes unswapped and applies
 calibration values 0, 0, 75, 283 for the normal orientation. The flipped
-orientation reverses both axes with 75, 283, 0, 0.
+orientation uses the same calibration. LVGL rotates input points together with
+the display; reversing the calibration a second time makes flipped gestures
+move opposite to the page animation.
 
 Without this correction, the 76-pixel axis is compressed into the top portion
 of the UI. Symptoms include both Wi-Fi rows selecting 2.4 GHz and touches below
@@ -62,6 +64,15 @@ touch result. Use a physical swipe when validating user touch behaviour.
 Use an empty part of a page for direction tests. Beginning on a clickable child
 (for example the OpenClash switch) intentionally gives that control ownership
 of the gesture.
+
+For a repeatable daemon-level regression, stop the managed service and pass a
+named FIFO as `--input`. Keep the FIFO open while ScreenPlus initializes, then
+use `screenplus-touch ... /tmp/screenplus-test-input` to emit a timed drag. This
+exercises LVGL's evdev calibration, display rotation and page-drag code without
+depending on the CST816X driver to loop injected records back. The 270-degree
+regression starts on Home and sends a logical left swipe from x=230 to x=50; it
+must settle on Traffic, not wrap backwards to OpenClash. Always remove the FIFO
+and restore the managed service after the capture.
 
 ## Framebuffer capture and private comparisons
 

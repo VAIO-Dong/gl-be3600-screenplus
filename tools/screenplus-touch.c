@@ -30,15 +30,20 @@ static int calibrate(int value, int input_minimum, int input_maximum,
 static void raw_to_logical(int raw_x, int raw_y, int rotation,
                            int *logical_x, int *logical_y)
 {
-    (void)rotation;
     /*
      * evdev first maps onto the native 76 x 284 framebuffer and LVGL then
-     * rotates that point into the 284 x 76 logical display. The reversed
-     * calibration used for 270 degrees cancels LVGL's opposite rotation, so
-     * both user orientations expose the same logical touch coordinates.
+     * rotates that point into the 284 x 76 logical display. Both display
+     * orientations use the same native calibration; LVGL supplies the
+     * orientation-specific point rotation.
      */
-    *logical_x = calibrate(raw_y, 0, 283, 283, 0);
-    *logical_y = calibrate(raw_x, 0, 75, 0, 75);
+    if (rotation == 270) {
+        *logical_x = calibrate(raw_y, 0, 283, 0, 283);
+        *logical_y = calibrate(raw_x, 0, 75, 75, 0);
+    }
+    else {
+        *logical_x = calibrate(raw_y, 0, 283, 283, 0);
+        *logical_y = calibrate(raw_x, 0, 75, 0, 75);
+    }
 }
 
 static void logical_to_raw(int logical_x, int logical_y, int rotation,
@@ -46,9 +51,14 @@ static void logical_to_raw(int logical_x, int logical_y, int rotation,
 {
     logical_x = clamp_value(logical_x, 0, 283);
     logical_y = clamp_value(logical_y, 0, 75);
-    (void)rotation;
-    *raw_x = logical_y;
-    *raw_y = 283 - logical_x;
+    if (rotation == 270) {
+        *raw_x = 75 - logical_y;
+        *raw_y = logical_x;
+    }
+    else {
+        *raw_x = logical_y;
+        *raw_y = 283 - logical_x;
+    }
 }
 
 static int emit_event(int fd, unsigned short type, unsigned short code, int value)
@@ -81,7 +91,7 @@ static int show_info(const char *device)
                y.minimum, y.maximum, y.resolution);
         puts("screenplus_swap_axes=false");
         puts("screenplus_calibration_90=0,0,75,283");
-        puts("screenplus_calibration_270=75,283,0,0");
+        puts("screenplus_calibration_270=0,0,75,283");
     }
     close(fd);
     return result;
