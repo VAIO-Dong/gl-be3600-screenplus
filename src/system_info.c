@@ -14,6 +14,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "safe_exec.h"
+
 static uint64_t monotonic_milliseconds(void)
 {
 	struct timespec now;
@@ -66,11 +68,13 @@ static int run_line(const char *command, char *buffer, unsigned int size)
 
 static int uci_get(const char *key, char *buffer, unsigned int size)
 {
+	/* uci keys are config.section.option or config.@type[n].option; both are
+	 * plain identifiers plus @ . [ ] -, none of which can alter the fixed
+	 * argv passed to execv. The whitelist is kept as defence in depth. */
 	if (!key || strspn(key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@[]-.") != strlen(key))
 		return -1;
-	char command[256];
-	snprintf(command, sizeof(command), "/sbin/uci -q get %s 2>/dev/null", key);
-	return run_line(command, buffer, size);
+	const char *const argv[] = { "/sbin/uci", "-q", "get", key, NULL };
+	return safe_exec_line(argv, buffer, size);
 }
 
 static int ubus_interface_value(const char *interface, const char *path,
