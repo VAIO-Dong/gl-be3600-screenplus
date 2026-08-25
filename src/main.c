@@ -683,7 +683,7 @@ static void page_drag_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
 	lv_indev_t *input = lv_indev_active();
-	if (!input || screen_count < 2)
+	if (!input)
 		return;
 	if (code == LV_EVENT_PRESSED) {
 		if (page_animation_running)
@@ -694,6 +694,8 @@ static void page_drag_event(lv_event_t *event)
 		drag_offset = 0;
 		return;
 	}
+	if (screen_count < 2)
+		return;
 	if (code == LV_EVENT_PRESSING && drag_tracking && !page_animation_running) {
 		lv_point_t point;
 		lv_indev_get_point(input, &point);
@@ -763,7 +765,7 @@ static void manage_idle_state(lv_timer_t *timer)
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
 		if (password_revealed[band] && password_reveal_deadline[band] &&
-		    monotonic_milliseconds() >= password_reveal_deadline[band]) {
+		    (int32_t)(monotonic_milliseconds() - password_reveal_deadline[band]) >= 0) {
 			password_revealed[band] = false;
 			password_reveal_deadline[band] = 0;
 			applied_snapshot_generation = 0;
@@ -1496,6 +1498,15 @@ static void update_reset_button(lv_timer_t *timer)
 	if (main_display)
 		lv_display_trigger_activity(main_display);
 	set_backlight(true);
+	/* RESET_MARKER_PRESSED: the button is still held. If held_ms exceeds the
+	 * final cancel threshold and the hotplug daemon stops sending events, we
+	 * would stay stuck in the overlay with the backlight forced on. Recovery:
+	 * after 20 seconds of continuous press, unlink the marker ourselves and
+	 * fall back to the RESET_MARKER_NONE path next tick. */
+	if (held_ms >= RESET_CANCEL_MS) {
+		unlink(RESET_BUTTON_MARKER);
+		return;
+	}
 	unsigned int stage = held_ms < RESET_NETWORK_MS ? 0U :
 		held_ms < RESET_FACTORY_MS ? 1U : 2U;
 	show_reset_stage(stage, held_ms);
