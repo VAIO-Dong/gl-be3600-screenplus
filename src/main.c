@@ -18,6 +18,7 @@
 
 #include "app_config.h"
 #include "metrics.h"
+#include "safe_exec.h"
 #include "system_info.h"
 
 LV_FONT_DECLARE(screenplus_ui_14);
@@ -149,12 +150,22 @@ static bool page_animation_running;
 static lv_point_t drag_start_point;
 static int32_t drag_offset;
 static int pending_page_delta;
-static volatile sig_atomic_t openclash_toggle_request;
-static volatile sig_atomic_t openclash_toggle_busy;
-static volatile sig_atomic_t openclash_toggle_target;
-static volatile sig_atomic_t openclash_toggle_failed;
-static volatile sig_atomic_t openclash_toggle_command_done;
+/* OpenClash toggle handshake between the UI thread and the system worker.
+ * The command/state fields below are guarded by openclash_toggle_mutex;
+ * openclash_toggle_syncing is only accessed from the LVGL/UI thread.
+ * openclash_toggle_request_id is a generation counter bumped on every newly
+ * accepted request: the worker remembers the id it started with and only
+ * publishes its outcome while that id still identifies the pending request,
+ * so a command that outlives the 30s UI timeout cannot clobber the state of
+ * a newer request. */
+static pthread_mutex_t openclash_toggle_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int openclash_toggle_request;
+static int openclash_toggle_busy;
+static int openclash_toggle_target;
+static int openclash_toggle_failed;
+static int openclash_toggle_command_done;
 static uint32_t openclash_toggle_deadline;
+static unsigned int openclash_toggle_request_id;
 static bool openclash_toggle_syncing;
 
 static void on_signal(int signal_number)
@@ -1545,19 +1556,29 @@ static lv_obj_t *build_wifi_screen(lv_obj_t *parent)
 static void openclash_toggle_event(lv_event_t *event)
 {
 	if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED ||
-	    openclash_toggle_syncing || openclash_toggle_busy)
+	    openclash_toggle_syncing)
 		return;
 	lv_obj_t *toggle = lv_event_get_target_obj(event);
-	openclash_toggle_target = lv_obj_has_state(toggle, LV_STATE_CHECKED) ? 1 : -1;
-	openclash_toggle_request = openclash_toggle_target;
-	openclash_toggle_failed = 0;
-	openclash_toggle_command_done = 0;
-	openclash_toggle_busy = 1;
-	openclash_toggle_deadline = monotonic_milliseconds() + 30000U;
+	int target = lv_obj_has_state(toggle, LV_STATE_CHECKED) ? 1 : -1;
+	bool accepted = false;
+	pthread_mutex_lock(&openclash_toggle_mutex);
+	if (!openclash_toggle_busy) {
+		++openclash_toggle_request_id;
+		openclash_toggle_target = target;
+		openclash_toggle_request = target;
+		openclash_toggle_failed = 0;
+		openclash_toggle_command_done = 0;
+		openclash_toggle_busy = 1;
+		openclash_toggle_deadline = monotonic_milliseconds() + 30000U;
+		accepted = true;
+	}
+	pthread_mutex_unlock(&openclash_toggle_mutex);
+	if (!accepted)
+		return;
 	lv_obj_add_state(toggle, LV_STATE_DISABLED);
 	if (openclash_state_label) {
 		set_label_text_if_changed(openclash_state_label,
-			openclash_toggle_target > 0 ?
+			target > 0 ?
 			translated("启动中", "STARTING") :
 			translated("停止中", "STOPPING"));
 		lv_obj_set_style_text_color(openclash_state_label,
@@ -1711,9 +1732,11 @@ static void apply_system_snapshot(lv_timer_t *timer)
 		update_wifi_band_display(band, wifi_bands[band]);
 
 	if (openclash_state_label) {
-		bool toggle_pending = openclash_toggle_busy;
+		pthread_mutex_lock(&openclash_toggle_mutex);
+		bool toggle_pending = openclash_toggle_busy != 0;
+		int pending_target = openclash_toggle_target;
 		if (toggle_pending) {
-			bool reached_target = openclash_toggle_target > 0 ?
+			bool reached_target = pending_target > 0 ?
 				snapshot.openclash.state == SCREENPLUS_STATE_ACTIVE :
 				snapshot.openclash.state == SCREENPLUS_STATE_IDLE;
 			bool timed_out = (int32_t)(monotonic_milliseconds() -
@@ -1727,9 +1750,10 @@ static void apply_system_snapshot(lv_timer_t *timer)
 				toggle_pending = false;
 			}
 		}
+		pthread_mutex_unlock(&openclash_toggle_mutex);
 		if (toggle_pending) {
 			set_label_text_if_changed(openclash_state_label,
-				openclash_toggle_target > 0 ?
+				pending_target > 0 ?
 				translated("启动中", "STARTING") :
 				translated("停止中", "STOPPING"));
 			lv_obj_set_style_text_color(openclash_state_label,
@@ -1792,23 +1816,43 @@ static void apply_system_snapshot(lv_timer_t *timer)
 
 static void apply_openclash_toggle_request(void)
 {
-	sig_atomic_t request = openclash_toggle_request;
+	pthread_mutex_lock(&openclash_toggle_mutex);
+	int request = openclash_toggle_request;
+	unsigned int request_id = openclash_toggle_request_id;
+	openclash_toggle_request = 0;
+	pthread_mutex_unlock(&openclash_toggle_mutex);
 	if (!request)
 		return;
-	openclash_toggle_request = 0;
-	int result;
-	if (request > 0) {
-		result = system("/sbin/uci -q set openclash.config.enable='1' && "
-			"/sbin/uci -q commit openclash && "
-			"/etc/init.d/openclash restart >/dev/null 2>&1");
-	} else {
-		result = system("/sbin/uci -q set openclash.config.enable='0' && "
-			"/sbin/uci -q commit openclash && "
-			"/etc/init.d/openclash stop >/dev/null 2>&1");
+	const char *const set_command[] = {
+		"/sbin/uci", "-q", "set",
+		request > 0 ? "openclash.config.enable=1" : "openclash.config.enable=0",
+		NULL
+	};
+	const char *const commit_command[] = {
+		"/sbin/uci", "-q", "commit", "openclash", NULL
+	};
+	const char *const service_command[] = {
+		"/etc/init.d/openclash",
+		request > 0 ? "restart" : "stop",
+		NULL
+	};
+	int result = safe_exec_quiet(set_command);
+	if (result == 0)
+		result = safe_exec_quiet(commit_command);
+	if (result == 0)
+		result = safe_exec_quiet(service_command);
+	pthread_mutex_lock(&openclash_toggle_mutex);
+	/* Publish the outcome only if the pending request is still the one this
+	 * command was started for. The UI timeout may have retired it (busy=0)
+	 * and a newer request may already hold a fresh generation id; writing
+	 * unconditionally would let the stale result end that request early or
+	 * leave stray failed/command_done flags behind. */
+	if (openclash_toggle_busy && request_id == openclash_toggle_request_id) {
+		if (result != 0)
+			openclash_toggle_failed = 1;
+		openclash_toggle_command_done = 1;
 	}
-	if (result != 0)
-		openclash_toggle_failed = 1;
-	openclash_toggle_command_done = 1;
+	pthread_mutex_unlock(&openclash_toggle_mutex);
 }
 
 static void *system_worker(void *unused)
