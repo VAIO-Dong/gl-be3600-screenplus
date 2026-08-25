@@ -152,7 +152,12 @@ static int32_t drag_offset;
 static int pending_page_delta;
 /* OpenClash toggle handshake between the UI thread and the system worker.
  * The command/state fields below are guarded by openclash_toggle_mutex;
- * openclash_toggle_syncing is only accessed from the LVGL/UI thread. */
+ * openclash_toggle_syncing is only accessed from the LVGL/UI thread.
+ * openclash_toggle_request_id is a generation counter bumped on every newly
+ * accepted request: the worker remembers the id it started with and only
+ * publishes its outcome while that id still identifies the pending request,
+ * so a command that outlives the 30s UI timeout cannot clobber the state of
+ * a newer request. */
 static pthread_mutex_t openclash_toggle_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int openclash_toggle_request;
 static int openclash_toggle_busy;
@@ -160,6 +165,7 @@ static int openclash_toggle_target;
 static int openclash_toggle_failed;
 static int openclash_toggle_command_done;
 static uint32_t openclash_toggle_deadline;
+static unsigned int openclash_toggle_request_id;
 static bool openclash_toggle_syncing;
 
 static void on_signal(int signal_number)
@@ -1557,6 +1563,7 @@ static void openclash_toggle_event(lv_event_t *event)
 	bool accepted = false;
 	pthread_mutex_lock(&openclash_toggle_mutex);
 	if (!openclash_toggle_busy) {
+		++openclash_toggle_request_id;
 		openclash_toggle_target = target;
 		openclash_toggle_request = target;
 		openclash_toggle_failed = 0;
@@ -1811,6 +1818,7 @@ static void apply_openclash_toggle_request(void)
 {
 	pthread_mutex_lock(&openclash_toggle_mutex);
 	int request = openclash_toggle_request;
+	unsigned int request_id = openclash_toggle_request_id;
 	openclash_toggle_request = 0;
 	pthread_mutex_unlock(&openclash_toggle_mutex);
 	if (!request)
@@ -1834,9 +1842,16 @@ static void apply_openclash_toggle_request(void)
 	if (result == 0)
 		result = safe_exec_quiet(service_command);
 	pthread_mutex_lock(&openclash_toggle_mutex);
-	if (result != 0)
-		openclash_toggle_failed = 1;
-	openclash_toggle_command_done = 1;
+	/* Publish the outcome only if the pending request is still the one this
+	 * command was started for. The UI timeout may have retired it (busy=0)
+	 * and a newer request may already hold a fresh generation id; writing
+	 * unconditionally would let the stale result end that request early or
+	 * leave stray failed/command_done flags behind. */
+	if (openclash_toggle_busy && request_id == openclash_toggle_request_id) {
+		if (result != 0)
+			openclash_toggle_failed = 1;
+		openclash_toggle_command_done = 1;
+	}
 	pthread_mutex_unlock(&openclash_toggle_mutex);
 }
 
