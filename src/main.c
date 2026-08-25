@@ -683,10 +683,10 @@ static void page_drag_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
 	lv_indev_t *input = lv_indev_active();
-	if (!input || screen_count < 2)
+	if (!input)
 		return;
 	if (code == LV_EVENT_PRESSED) {
-		if (page_animation_running)
+		if (page_animation_running || screen_count < 2)
 			return;
 		lv_indev_get_point(input, &drag_start_point);
 		drag_tracking = true;
@@ -763,7 +763,7 @@ static void manage_idle_state(lv_timer_t *timer)
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
 		if (password_revealed[band] && password_reveal_deadline[band] &&
-		    monotonic_milliseconds() >= password_reveal_deadline[band]) {
+		    (int32_t)(monotonic_milliseconds() - password_reveal_deadline[band]) >= 0) {
 			password_revealed[band] = false;
 			password_reveal_deadline[band] = 0;
 			applied_snapshot_generation = 0;
@@ -1490,6 +1490,20 @@ static void update_reset_button(lv_timer_t *timer)
 		}
 		unlink(RESET_BUTTON_MARKER);
 		close_reset_overlay();
+		return;
+	}
+	/* RESET_MARKER_PRESSED: the button is still physically held. If the
+	 * marker shows held_ms well beyond RESET_CANCEL_MS and has not been
+	 * updated for several seconds, the hotplug daemon likely stopped sending
+	 * events and we are stuck. The normal cancel flow (release at 20s -> show
+	 * "cancelled" -> wait 3s -> close overlay) requires a RELEASED marker, so
+	 * we cannot enter it from a stale PRESSED state. Recovery: unlink the
+	 * marker after held_ms >= 25 seconds (RESET_CANCEL_MS + 5s grace period),
+	 * allowing the RESET_MARKER_NONE branch above to close the overlay on the
+	 * next tick. This only triggers when the release event is genuinely lost,
+	 * not during a normal 20-second hold-and-release. */
+	if (held_ms >= RESET_CANCEL_MS + 5000U) {
+		unlink(RESET_BUTTON_MARKER);
 		return;
 	}
 	open_reset_overlay();
