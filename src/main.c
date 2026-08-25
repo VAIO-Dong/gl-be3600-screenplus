@@ -694,6 +694,8 @@ static void page_drag_event(lv_event_t *event)
 		drag_offset = 0;
 		return;
 	}
+	if (screen_count < 2)
+		return;
 	if (code == LV_EVENT_PRESSING && drag_tracking && !page_animation_running) {
 		lv_point_t point;
 		lv_indev_get_point(input, &point);
@@ -1510,6 +1512,15 @@ static void update_reset_button(lv_timer_t *timer)
 	if (main_display)
 		lv_display_trigger_activity(main_display);
 	set_backlight(true);
+	/* RESET_MARKER_PRESSED: the button is still held. If held_ms exceeds the
+	 * final cancel threshold and the hotplug daemon stops sending events, we
+	 * would stay stuck in the overlay with the backlight forced on. Recovery:
+	 * after 20 seconds of continuous press, unlink the marker ourselves and
+	 * fall back to the RESET_MARKER_NONE path next tick. */
+	if (held_ms >= RESET_CANCEL_MS) {
+		unlink(RESET_BUTTON_MARKER);
+		return;
+	}
 	unsigned int stage = held_ms < RESET_NETWORK_MS ? 0U :
 		held_ms < RESET_FACTORY_MS ? 1U : 2U;
 	show_reset_stage(stage, held_ms);
