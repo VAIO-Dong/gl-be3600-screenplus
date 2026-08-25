@@ -14,7 +14,9 @@ case "$ACTION" in
 		;;
 	released)
 		if [ -f "$marker" ]; then
-			read -r started _ < "$marker" || started=
+			read -r first second _ < "$marker" || first=
+			[ "$first" = "released" ] && exit 0
+			started="$first"
 			read -r released _ < /proc/uptime || released=
 			if [ -n "$started" ] && [ -n "$released" ]; then
 				umask 077

@@ -22,6 +22,7 @@
 #include "system_info.h"
 
 LV_FONT_DECLARE(screenplus_ui_14);
+LV_FONT_DECLARE(screenplus_reset_16);
 
 #define DEFAULT_FRAMEBUFFER "/dev/fb0"
 #define DEFAULT_INPUT "/dev/input/event0"
@@ -216,6 +217,12 @@ static const lv_font_t *small_ui_font(void)
 {
 	return app_config.chinese ? &screenplus_ui_14 :
 		&lv_font_montserrat_14;
+}
+
+static const lv_font_t *reset_ui_font(void)
+{
+	return app_config.chinese ? &screenplus_reset_16 :
+		&lv_font_montserrat_16;
 }
 
 /* Non-home pages use one shared hierarchy: label, primary value, detail. */
@@ -1280,24 +1287,24 @@ static lv_obj_t *create_reset_stage_page(lv_obj_t *parent, unsigned int stage)
 		"NETWORK", "FACTORY", "CANCEL"
 	};
 	static const char *const chinese_stage_names[] = {
-		"网络", "整机", "取消"
+		"网络", "出厂", "取消"
 	};
 	unsigned int stage_colours[] = {
 		app_config.accent_colour, app_config.warning_colour, app_config.error_colour
 	};
 	lv_obj_t *page = lv_obj_create(parent);
 	style_screen(page);
-	create_label(page, "RESET", 8, 4, ui_label_font(), app_config.accent_colour);
+	create_label(page, "RESET", 8, 3, reset_ui_font(), app_config.accent_colour);
 	lv_obj_t *stage_name = create_label(page,
 		app_config.chinese ? chinese_stage_names[stage] : english_stage_names[stage],
-		146, 4, small_ui_font(), stage_colours[stage]);
+		146, 3, reset_ui_font(), stage_colours[stage]);
 	lv_obj_set_width(stage_name, 130);
 	lv_obj_set_style_text_align(stage_name, LV_TEXT_ALIGN_RIGHT, 0);
 	create_divider(page, 8, 25, 268, 2);
-	reset_stage_main_labels[stage] = create_label(page, "", 8, 30,
-		small_ui_font(), stage_colours[stage]);
-	reset_stage_detail_labels[stage] = create_label(page, "", 8, 50,
-		small_ui_font(), app_config.secondary_colour);
+	reset_stage_main_labels[stage] = create_label(page, "", 8, 28,
+		reset_ui_font(), app_config.primary_colour);
+	reset_stage_detail_labels[stage] = create_label(page, "", 8, 49,
+		reset_ui_font(), app_config.primary_colour);
 	lv_obj_set_width(reset_stage_main_labels[stage], 268);
 	lv_obj_set_width(reset_stage_detail_labels[stage], 268);
 	lv_label_set_long_mode(reset_stage_main_labels[stage], LV_LABEL_LONG_CLIP);
@@ -1379,18 +1386,18 @@ static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
 			set_label_text_if_changed(reset_stage_main_labels[stage],
 				translated("继续按住 Reset", "KEEP HOLDING RESET"));
 			snprintf(detail, sizeof(detail),
-				translated("继续按 %us: 重置网络", "NETWORK RESET IN %us"), remaining);
+				translated("%u 秒后可重置网络", "NETWORK RESET IN %us"), remaining);
 		} else if (stage == 1) {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
-				translated("松开: 重置网络", "RELEASE: RESET NETWORK"));
+				translated("松开以重置网络", "RELEASE: RESET NETWORK"));
 			snprintf(detail, sizeof(detail),
-				translated("继续按 %us: 重置整机", "HOLD %us MORE: FACTORY RESET"),
+				translated("继续按住 %u 秒恢复出厂设置", "HOLD %us MORE: FACTORY RESET"),
 				remaining);
 		} else if (!cancelled) {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
-				translated("松开: 重置整机", "RELEASE: FACTORY RESET"));
+				translated("松开以恢复出厂设置", "RELEASE: FACTORY RESET"));
 			snprintf(detail, sizeof(detail),
-				translated("继续按 %us: 取消操作", "HOLD %us MORE: CANCEL"), remaining);
+				translated("继续按住 %u 秒取消操作", "HOLD %us MORE: CANCEL"), remaining);
 		} else {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
 				translated("操作已取消", "RESET CANCELLED"));
@@ -1411,9 +1418,11 @@ static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
 	lv_obj_set_width(reset_stage_progress[stage], width);
 }
 
-static void show_reset_cancel_confirmation(uint32_t elapsed_ms)
+static void show_reset_release_confirmation(uint32_t held_ms, uint32_t elapsed_ms)
 {
-	const unsigned int stage = 2U;
+	bool cancelled = held_ms < RESET_NETWORK_MS || held_ms >= RESET_CANCEL_MS;
+	unsigned int stage = cancelled ? 2U :
+		held_ms < RESET_FACTORY_MS ? 0U : 1U;
 	if (stage != reset_visible_stage) {
 		for (unsigned int index = 0; index < RESET_STAGE_COUNT; ++index)
 			set_page_visible(reset_stage_pages[index], index == stage);
@@ -1424,10 +1433,22 @@ static void show_reset_cancel_confirmation(uint32_t elapsed_ms)
 		(unsigned int)((RESET_CONFIRM_MS - elapsed_ms + 999U) / 1000U) : 0U;
 	if (remaining != reset_last_remaining || !reset_cancelled) {
 		char detail[96];
-		set_label_text_if_changed(reset_stage_main_labels[stage],
-			translated("操作已取消", "RESET CANCELLED"));
-		snprintf(detail, sizeof(detail),
-			translated("%us 后返回", "RETURNING IN %us"), remaining);
+		if (cancelled) {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("操作已取消", "RESET CANCELLED"));
+			snprintf(detail, sizeof(detail),
+				translated("%u 秒后返回", "RETURNING IN %us"), remaining);
+		} else if (stage == 0U) {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("正在重置网络", "RESETTING NETWORK"));
+			snprintf(detail, sizeof(detail), "%s",
+				translated("请稍候", "PLEASE WAIT"));
+		} else {
+			set_label_text_if_changed(reset_stage_main_labels[stage],
+				translated("正在恢复出厂设置", "FACTORY RESETTING"));
+			snprintf(detail, sizeof(detail), "%s",
+				translated("设备即将重启", "PLEASE WAIT"));
+		}
 		set_label_text_if_changed(reset_stage_detail_labels[stage], detail);
 		reset_last_remaining = remaining;
 		reset_cancelled = true;
@@ -1479,13 +1500,12 @@ static void update_reset_button(lv_timer_t *timer)
 		return;
 	}
 	if (state == RESET_MARKER_RELEASED) {
-		bool cancelled = held_ms < RESET_NETWORK_MS || held_ms >= RESET_CANCEL_MS;
-		if (cancelled && released_ms < RESET_CONFIRM_MS) {
+		if (released_ms < RESET_CONFIRM_MS) {
 			open_reset_overlay();
 			if (main_display)
 				lv_display_trigger_activity(main_display);
 			set_backlight(true);
-			show_reset_cancel_confirmation(released_ms);
+			show_reset_release_confirmation(held_ms, released_ms);
 			return;
 		}
 		unlink(RESET_BUTTON_MARKER);

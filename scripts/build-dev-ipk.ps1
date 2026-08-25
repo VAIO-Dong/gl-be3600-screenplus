@@ -172,6 +172,7 @@ $dataEntries = @(
 	@{ Name='./usr/libexec/screenplus-diagnostics'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-diagnostics')) },
 	@{ Name='./usr/libexec/screenplus-migrate'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-migrate')) },
 	@{ Name='./usr/libexec/screenplus-run'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-run')) },
+	@{ Name='./usr/libexec/screenplus-reset-hook'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-reset-hook')) },
 	@{ Name='./usr/libexec/screenplus-reset-threshold'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-reset-threshold')) },
 	@{ Name='./usr/libexec/screenplus-toggle-ui'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-toggle-ui')) },
 	@{ Name='./usr/libexec/screenplus-toggle-ui.lua'; Type='file'; Mode=493; Content=(Get-Bytes (Join-Path $packageRoot 'screenplus-toggle-ui.lua')) },
