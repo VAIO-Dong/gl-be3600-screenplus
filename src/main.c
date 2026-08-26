@@ -30,6 +30,9 @@ LV_FONT_DECLARE(screenplus_ui_14);
 #define RESET_FACTORY_MS 8000U
 #define RESET_CANCEL_MS 20000U
 #define RESET_CONFIRM_MS 3000U
+/* Grace period past RESET_CANCEL_MS before a still-pressed marker is treated
+ * as stale. Leaves the normal cancel-and-release flow untouched. */
+#define RESET_RECOVERY_MS (RESET_CANCEL_MS + 5000U)
 #define RESET_STAGE_COUNT 3U
 
 struct options {
@@ -685,8 +688,17 @@ static void page_drag_event(lv_event_t *event)
 	lv_indev_t *input = lv_indev_active();
 	if (!input)
 		return;
+	/*
+	 * Gesture tracking runs for every page count. The Wi-Fi page relies on it
+	 * for movement detection and for suppressing the QR long press once a
+	 * swipe has started, and the release paths must always clear
+	 * drag_tracking: apply_metrics() and apply_system_snapshot() pause while
+	 * that flag is set, so a stuck flag would freeze all data updates. Only
+	 * the page translation and settle animation require two or more pages.
+	 */
+	bool can_translate = screen_count >= 2;
 	if (code == LV_EVENT_PRESSED) {
-		if (page_animation_running || screen_count < 2)
+		if (page_animation_running)
 			return;
 		lv_indev_get_point(input, &drag_start_point);
 		drag_tracking = true;
@@ -694,8 +706,6 @@ static void page_drag_event(lv_event_t *event)
 		drag_offset = 0;
 		return;
 	}
-	if (screen_count < 2)
-		return;
 	if (code == LV_EVENT_PRESSING && drag_tracking && !page_animation_running) {
 		lv_point_t point;
 		lv_indev_get_point(input, &point);
@@ -708,6 +718,8 @@ static void page_drag_event(lv_event_t *event)
 		}
 		/* A page drag owns the gesture; never let it age into a long press. */
 		lv_indev_reset_long_press(input);
+		if (!can_translate)
+			return;
 		if (!app_config.swipe_loop &&
 		    ((current_screen_index == 0 && horizontal > 0) ||
 		     (current_screen_index + 1U == screen_count && horizontal < 0)))
@@ -718,7 +730,7 @@ static void page_drag_event(lv_event_t *event)
 	}
 	if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) && drag_tracking) {
 		drag_tracking = false;
-		if (!drag_moved) {
+		if (!drag_moved || !can_translate) {
 			drag_offset = 0;
 			return;
 		}
@@ -1494,17 +1506,17 @@ static void update_reset_button(lv_timer_t *timer)
 		close_reset_overlay();
 		return;
 	}
-	/* RESET_MARKER_PRESSED: the button is still physically held. If the
-	 * marker shows held_ms well beyond RESET_CANCEL_MS and has not been
-	 * updated for several seconds, the hotplug daemon likely stopped sending
-	 * events and we are stuck. The normal cancel flow (release at 20s -> show
-	 * "cancelled" -> wait 3s -> close overlay) requires a RELEASED marker, so
-	 * we cannot enter it from a stale PRESSED state. Recovery: unlink the
-	 * marker after held_ms >= 25 seconds (RESET_CANCEL_MS + 5s grace period),
-	 * allowing the RESET_MARKER_NONE branch above to close the overlay on the
-	 * next tick. This only triggers when the release event is genuinely lost,
-	 * not during a normal 20-second hold-and-release. */
-	if (held_ms >= RESET_CANCEL_MS + 5000U) {
+	/*
+	 * RESET_MARKER_PRESSED: the button is still held. The official cancel
+	 * flow needs the marker to survive until the hotplug script rewrites it
+	 * as "released", which then drives the cancelled stage and the 3 s
+	 * release confirmation, so the marker must not be removed at
+	 * RESET_CANCEL_MS itself. Only a genuinely lost release event warrants
+	 * recovery: after RESET_RECOVERY_MS the marker is stale, so drop it and
+	 * let the RESET_MARKER_NONE branch above close the overlay and release
+	 * the forced backlight on the next tick.
+	 */
+	if (held_ms >= RESET_RECOVERY_MS) {
 		unlink(RESET_BUTTON_MARKER);
 		return;
 	}
@@ -1512,15 +1524,6 @@ static void update_reset_button(lv_timer_t *timer)
 	if (main_display)
 		lv_display_trigger_activity(main_display);
 	set_backlight(true);
-	/* RESET_MARKER_PRESSED: the button is still held. If held_ms exceeds the
-	 * final cancel threshold and the hotplug daemon stops sending events, we
-	 * would stay stuck in the overlay with the backlight forced on. Recovery:
-	 * after 20 seconds of continuous press, unlink the marker ourselves and
-	 * fall back to the RESET_MARKER_NONE path next tick. */
-	if (held_ms >= RESET_CANCEL_MS) {
-		unlink(RESET_BUTTON_MARKER);
-		return;
-	}
 	unsigned int stage = held_ms < RESET_NETWORK_MS ? 0U :
 		held_ms < RESET_FACTORY_MS ? 1U : 2U;
 	show_reset_stage(stage, held_ms);
