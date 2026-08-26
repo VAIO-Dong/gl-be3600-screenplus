@@ -5,6 +5,7 @@
 /etc/init.d/screenplus stop 2>/dev/null
 /etc/init.d/screenplus disable 2>/dev/null
 rm -f /tmp/screenplus-reset-button
+/usr/libexec/screenplus-reset-hook restore 2>/dev/null || true
 /usr/libexec/screenplus-reset-threshold restore 2>/dev/null || true
 if [ "$PKG_UPGRADE" != "1" ]; then
 	/usr/libexec/screenplus-toggle-ui restore 2>/dev/null || true

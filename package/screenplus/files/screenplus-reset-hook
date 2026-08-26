@@ -1,0 +1,62 @@
+#!/bin/sh
+
+set -eu
+
+action="${1:-}"
+reset_script=/etc/rc.button/reset
+hook_script=/etc/hotplug.d/button/99-screenplus-reset
+begin='# ScreenPlus reset event hook: begin'
+end='# ScreenPlus reset event hook: end'
+temporary=''
+
+cleanup() {
+	[ -z "$temporary" ] || rm -f "$temporary"
+}
+trap cleanup EXIT INT TERM
+
+rewrite_without_hook() {
+	temporary="$(mktemp /etc/rc.button/.screenplus-reset-hook.XXXXXX)"
+	sed "/^$begin\$/,/^$end\$/d" "$reset_script" > "$temporary"
+	chmod 0755 "$temporary"
+}
+
+apply_hook() {
+	[ -f "$reset_script" ] || return 1
+	grep -Fqx "$begin" "$reset_script" && return 0
+	temporary="$(mktemp /etc/rc.button/.screenplus-reset-hook.XXXXXX)"
+	{
+		IFS= read -r first_line || return 1
+		printf '%s\n' "$first_line"
+		printf '%s\n' "$begin"
+		printf '[ -x %s ] && %s\n' "$hook_script" "$hook_script"
+		printf '%s\n' "$end"
+		cat
+	} < "$reset_script" > "$temporary"
+	chmod 0755 "$temporary"
+	mv -f "$temporary" "$reset_script"
+	temporary=''
+}
+
+restore_hook() {
+	[ -f "$reset_script" ] || return 0
+	grep -Fqx "$begin" "$reset_script" || return 0
+	rewrite_without_hook
+	mv -f "$temporary" "$reset_script"
+	temporary=''
+}
+
+case "$action" in
+	apply)
+		apply_hook
+		;;
+	restore)
+		restore_hook
+		;;
+	status)
+		grep -Fqx "$begin" "$reset_script"
+		;;
+	*)
+		echo 'usage: screenplus-reset-hook apply|restore|status' >&2
+		exit 2
+		;;
+esac

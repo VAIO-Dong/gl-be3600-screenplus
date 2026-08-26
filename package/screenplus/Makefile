@@ -55,6 +55,7 @@ define Package/screenplus/install
 	$(INSTALL_BIN) ./files/screenplus-diagnostics $(1)/usr/libexec/screenplus-diagnostics
 	$(INSTALL_BIN) ./files/screenplus-migrate $(1)/usr/libexec/screenplus-migrate
 	$(INSTALL_BIN) ./files/screenplus-run $(1)/usr/libexec/screenplus-run
+	$(INSTALL_BIN) ./files/screenplus-reset-hook $(1)/usr/libexec/screenplus-reset-hook
 	$(INSTALL_BIN) ./files/screenplus-reset-threshold $(1)/usr/libexec/screenplus-reset-threshold
 	$(INSTALL_BIN) ./files/screenplus-toggle-ui $(1)/usr/libexec/screenplus-toggle-ui
 	$(INSTALL_BIN) ./files/screenplus-toggle-ui.lua $(1)/usr/libexec/screenplus-toggle-ui.lua
@@ -89,6 +90,8 @@ define Package/screenplus/postinst
 /usr/libexec/screenplus-migrate 2>/dev/null
 /usr/libexec/screenplus-reset-threshold restore 2>/dev/null || \
 	logger -t screenplus "legacy reset threshold change was not restored"
+/usr/libexec/screenplus-reset-hook apply 2>/dev/null || \
+	logger -t screenplus "reset button event hook was not applied"
 rm -f /etc/gl-switch.d/ScreenPlus.sh
 if [ "$$(uci -q get switch-button.@main[0].func)" = "ScreenPlus" ]; then
 	uci set switch-button.@main[0].func=screenplus
@@ -113,6 +116,7 @@ define Package/screenplus/prerm
 /etc/init.d/screenplus stop 2>/dev/null
 /etc/init.d/screenplus disable 2>/dev/null
 rm -f /tmp/screenplus-reset-button
+/usr/libexec/screenplus-reset-hook restore 2>/dev/null || true
 /usr/libexec/screenplus-reset-threshold restore 2>/dev/null || true
 if [ "$${PKG_UPGRADE}" != "1" ]; then
 	/usr/libexec/screenplus-toggle-ui restore 2>/dev/null || true

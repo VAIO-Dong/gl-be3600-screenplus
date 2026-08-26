@@ -1,6 +1,6 @@
 # ScreenPlus for GL-BE3600
 
-ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。网络速率优先从 NSS/PPE 数据面计数器读取，不需要关闭硬件加速；不可用时自动回退到内核网卡计数器。屏幕支持翻转，壁挂安装时也能正常操作。
+ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。速率显示与硬件加速不冲突，同时还支持屏幕翻转，壁挂安装时也能正常操作。
 
 <p align="center">
   <img src="docs/images/home.png" width="568" alt="ScreenPlus 首页">
@@ -24,7 +24,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
   <img src="docs/images/traffic.png" width="568" alt="实时网络速率和连接数">
 </p>
 
-固定位置显示上行、下行和实时连接数，右侧是最近 30 秒的流量趋势。数字和单位使用固定位置，实时变化时不会挤动布局。
+固定位置显示上行、下行和实时连接数，右侧是最近 30 秒的流量趋势。
 
 ### 系统状态
 
@@ -36,7 +36,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 
 ### Wi-Fi
 
-显示 2.4 GHz 和 5 GHz 的 SSID、开关状态与密码。密码支持隐藏、点击显示、始终显示和二维码模式；在页面内长按可以打开二维码，开始滑动后不会误触发。
+显示 2.4 GHz 和 5 GHz 的 SSID、开关状态与密码。密码支持隐藏、点击显示、始终显示和二维码模式。
 
 ### 网络连接
 
@@ -51,7 +51,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 - USB Tethering
 - Cellular
 
-下方显示当前 WAN 类型、WAN IP 和 LAN IP。灰色表示接口不存在或没有连接，蓝色表示存在但没有启用，黄色表示已经启用但无法联网，主题色表示连接正常。
+与当前所使用的WAN侧连接方式与LAN的IP地址
 
 ### OpenClash
 
@@ -59,18 +59,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
   <img src="docs/images/openclash.png" width="568" alt="OpenClash 状态和实时信息">
 </p>
 
-显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash；启动或停止过程中会显示明确的“启动中 / 停止中”状态，并暂时锁定开关，避免重复操作。
-
-## Reset 按键提示
-
-按住机身 Reset 键时，屏幕会同步显示当前阶段和倒计时：
-
-- 3 秒内松开：立即显示操作已取消，3 秒后返回原页面
-- 3 秒以上、8 秒内：松开后重置网络
-- 8 秒以上、20 秒内：松开后恢复整机设置
-- 超过 20 秒：取消操作
-
-时间规则跟随设备官方设置，ScreenPlus 不会修改系统原本的重置时长。
+显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash。
 
 ## LuCI 配置
 
@@ -87,9 +76,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 - 主题色、主色、次要色、背景色、分割线和状态颜色
 - 全局背景，或者每一页独立的背景图
 
-Pages and content 使用六个页面 Tab，页面顺序单独放在上方。隐藏页面内容后，屏幕会按当前组合重新布局；保存设置时保持在正在查看的屏幕页面，不会强制回到首页。
-
-背景图建议使用 284 × 76 px 的 PNG、JPEG、WebP 或 BMP，最大 10 MB。其他尺寸会在浏览器里居中裁切，再转换成固定大小的 RGB565 文件，上传后立即应用。没有设置背景时不显示预览占位。
+背景图在浏览器里居中裁切为 284 × 76，再转换成固定大小的 RGB565 文件，上传后立即应用。
 
 ## 官方屏幕一键切换
 
@@ -105,15 +92,13 @@ Pages and content 使用六个页面 Tab，页面顺序单独放在上方。隐�
 - GL.iNet OpenWrt 23.05-SNAPSHOT
 - 架构：`aarch64_cortex-a53_neon-vfpv4`
 
-前往 [Releases](https://github.com/VAIO-Dong/gl-be3600-screenplus/releases) 下载最新的单一 IPK，上传到路由器后通过 SSH 安装：
+前往 [Releases](https://github.com/VAIO-Dong/gl-be3600-screenplus/releases) 下载最新的单一 IPK，在luci的系统-软件包里面安装，或者是上传到路由器之后通过SSH指令安装：
 
 ```sh
 opkg install screenplus_<version>-1_aarch64_cortex-a53_neon-vfpv4.ipk
 ```
 
-一个 IPK 已经包含屏幕服务、LuCI 页面、菜单和 RPC 权限，不需要再单独安装 `luci-app-screenplus`。
-
-> 项目目前主要在 GL-BE3600 原厂固件上开发和实机验证。升级或安装前，建议保留配置备份。
+> 当前项目只在 GL-BE3600 原厂固件上开发和做了一些实机验证。第三方固件没有测试过，建议安装前先保留好路由配置的备份，以防万一。
 
 ## 工作方式
 

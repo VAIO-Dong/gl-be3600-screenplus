@@ -163,10 +163,15 @@ point is what lets normal configuration changes retain the current page.
 
 ## Reset-button overlay
 
-`/etc/hotplug.d/button/99-screenplus-reset` records the press timestamp in
-`/tmp/screenplus-reset-button`; the UI samples that tmpfs marker every 50 ms.
-On release the marker changes to `released <pressed> <released>` so the UI can
-show the result immediately. ScreenPlus removes it after the confirmation page.
+`/usr/libexec/screenplus-reset-hook` adds an idempotent, reversible call at the
+start of the vendor `/etc/rc.button/reset` handler. That early call runs
+`/etc/hotplug.d/button/99-screenplus-reset`, which records the press timestamp
+in `/tmp/screenplus-reset-button`; the UI samples that tmpfs marker every 50 ms.
+On release the marker changes to `released <pressed> <released>` before the
+vendor handler waits for its screen service, so ScreenPlus can show the result
+immediately. ScreenPlus removes the marker after the three-second result page.
+The hook does not change the vendor reset actions or their 3/8/20-second
+thresholds, and uninstalling the package removes only the marked hook block.
 
 Test the display stages without calling `/etc/rc.button/reset` and without
 performing a real reset:
@@ -178,8 +183,9 @@ BUTTON=reset ACTION=released /etc/hotplug.d/button/99-screenplus-reset
 ~~~
 
 Capture at 0–3, 3–8, 8–20, and over 20 seconds, matching the vendor reset
-script exactly. Releasing before 3 seconds must immediately show Reset
-cancelled, count down for 3 seconds, then return to the same dashboard page.
+script exactly. Releasing in any interval must immediately show the selected
+result. A release before 3 seconds must show Reset cancelled, count down for
+3 seconds, then return to the same dashboard page.
 The package must never change the vendor thresholds. The restore-only
 `/usr/libexec/screenplus-reset-threshold` exists solely to undo the 16-second
 change made by older ScreenPlus builds when their marker is present.
