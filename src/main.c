@@ -31,6 +31,9 @@ LV_FONT_DECLARE(screenplus_reset_16);
 #define RESET_FACTORY_MS 8000U
 #define RESET_CANCEL_MS 20000U
 #define RESET_CONFIRM_MS 3000U
+/* Grace period past RESET_CANCEL_MS before a still-pressed marker is treated
+ * as stale. Leaves the normal cancel-and-release flow untouched. */
+#define RESET_RECOVERY_MS (RESET_CANCEL_MS + 5000U)
 #define RESET_STAGE_COUNT 3U
 
 struct options {
@@ -690,8 +693,17 @@ static void page_drag_event(lv_event_t *event)
 {
 	lv_event_code_t code = lv_event_get_code(event);
 	lv_indev_t *input = lv_indev_active();
-	if (!input || screen_count < 2)
+	if (!input)
 		return;
+	/*
+	 * Gesture tracking runs for every page count. The Wi-Fi page relies on it
+	 * for movement detection and for suppressing the QR long press once a
+	 * swipe has started, and the release paths must always clear
+	 * drag_tracking: apply_metrics() and apply_system_snapshot() pause while
+	 * that flag is set, so a stuck flag would freeze all data updates. Only
+	 * the page translation and settle animation require two or more pages.
+	 */
+	bool can_translate = screen_count >= 2;
 	if (code == LV_EVENT_PRESSED) {
 		if (page_animation_running)
 			return;
@@ -713,6 +725,8 @@ static void page_drag_event(lv_event_t *event)
 		}
 		/* A page drag owns the gesture; never let it age into a long press. */
 		lv_indev_reset_long_press(input);
+		if (!can_translate)
+			return;
 		if (!app_config.swipe_loop &&
 		    ((current_screen_index == 0 && horizontal > 0) ||
 		     (current_screen_index + 1U == screen_count && horizontal < 0)))
@@ -723,7 +737,7 @@ static void page_drag_event(lv_event_t *event)
 	}
 	if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) && drag_tracking) {
 		drag_tracking = false;
-		if (!drag_moved) {
+		if (!drag_moved || !can_translate) {
 			drag_offset = 0;
 			return;
 		}
@@ -770,7 +784,7 @@ static void manage_idle_state(lv_timer_t *timer)
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
 		if (password_revealed[band] && password_reveal_deadline[band] &&
-		    monotonic_milliseconds() >= password_reveal_deadline[band]) {
+		    (int32_t)(monotonic_milliseconds() - password_reveal_deadline[band]) >= 0) {
 			password_revealed[band] = false;
 			password_reveal_deadline[band] = 0;
 			applied_snapshot_generation = 0;
@@ -1510,6 +1524,20 @@ static void update_reset_button(lv_timer_t *timer)
 		}
 		unlink(RESET_BUTTON_MARKER);
 		close_reset_overlay();
+		return;
+	}
+	/*
+	 * RESET_MARKER_PRESSED: the button is still held. The official cancel
+	 * flow needs the marker to survive until the hotplug script rewrites it
+	 * as "released", which then drives the cancelled stage and the 3 s
+	 * release confirmation, so the marker must not be removed at
+	 * RESET_CANCEL_MS itself. Only a genuinely lost release event warrants
+	 * recovery: after RESET_RECOVERY_MS the marker is stale, so drop it and
+	 * let the RESET_MARKER_NONE branch above close the overlay and release
+	 * the forced backlight on the next tick.
+	 */
+	if (held_ms >= RESET_RECOVERY_MS) {
+		unlink(RESET_BUTTON_MARKER);
 		return;
 	}
 	open_reset_overlay();
