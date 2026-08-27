@@ -131,7 +131,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build-dev-ipk.ps1
 dist/screenplus_<version>-1_aarch64_cortex-a53_neon-vfpv4.ipk
 ```
 
-本地构建使用项目固定的 LVGL 9.5.0 和 Zig ARM64/musl 交叉编译器。OpenWrt SDK 使用 [package/screenplus/Makefile](package/screenplus/Makefile)。
+本地构建使用项目固定的 LVGL 9.5.0 和 Zig ARM64/musl 交叉编译器，两者均由 `scripts\bootstrap-toolchain.ps1` 自动下载（重复运行会跳过已装部分）。如果 GitHub / ziglang.org 无法直连，可给脚本追加 SOCKS5 代理参数：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap-toolchain.ps1 --socks-proxy 127.0.0.1:1080
+```
+
+OpenWrt SDK 使用 [package/screenplus/Makefile](package/screenplus/Makefile)。
 
 ## 调试与贡献
 
