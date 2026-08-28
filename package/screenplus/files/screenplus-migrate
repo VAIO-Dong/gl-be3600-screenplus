@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Idempotent migration through the explicit page-order and aligned-page schema.
+# Idempotent migration through the compact screen-schedule schema.
 schema_version="$(uci -q get screenplus.main.schema_version)"
-[ "$schema_version" = "15" ] && exit 0
+[ "$schema_version" = "16" ] && exit 0
 
 get_or_default() {
 	value="$(uci -q get "$1")"
@@ -92,6 +92,28 @@ add_traffic_connections() {
 	esac
 }
 
+ensure_schedule_range() {
+	prefix="screenplus.main.schedule_$1"
+	if [ -n "$2" ]; then
+		uci set "${prefix}_enabled=$(get_or_default "${prefix}_enabled" "$2")"
+	fi
+	uci set "${prefix}_on=$(get_or_default "${prefix}_on" "$3")"
+	uci set "${prefix}_off=$(get_or_default "${prefix}_off" "$4")"
+}
+
+ensure_screen_schedule() {
+	uci set screenplus.main.schedule_enabled="$(get_or_default \
+		screenplus.main.schedule_enabled 0)"
+	uci set screenplus.main.schedule_mode="$(get_or_default \
+		screenplus.main.schedule_mode daily)"
+	ensure_schedule_range daily '' 08:00 23:00
+	ensure_schedule_range weekday 1 09:00 19:00
+	ensure_schedule_range weekend 0 09:00 19:00
+	for day in monday tuesday wednesday thursday friday saturday sunday; do
+		ensure_schedule_range "$day" 1 08:00 23:00
+	done
+}
+
 finish_migration() {
 	uci -q delete screenplus.main.restore_official_on_remove
 	uci -q delete screenplus.appearance.surface
@@ -102,10 +124,15 @@ finish_migration() {
 	ensure_page_order_values
 	canonicalise_network_fields
 	align_openclash_traffic_fields
-	uci set screenplus.main.schema_version=15
+	ensure_screen_schedule
+	uci set screenplus.main.schema_version=16
 	uci commit screenplus
 	exit 0
 }
+
+if [ "$schema_version" = "15" ]; then
+	finish_migration
+fi
 
 if [ "$schema_version" = "14" ]; then
 	finish_migration

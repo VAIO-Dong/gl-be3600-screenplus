@@ -1,0 +1,442 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: ScreenPlus 1.2.0\n"
+"Language: zh_CN\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "2.4 GHz Wi-Fi name and password"
+msgstr "2.4 GHz Wi-Fi 名称和密码"
+
+msgid "30-second traffic chart"
+msgstr "最近 30 秒流量图"
+
+msgid "5 GHz Wi-Fi name and password"
+msgstr "5 GHz Wi-Fi 名称和密码"
+
+msgid "A clear clock for quick checks at a glance."
+msgstr "简洁清晰的时钟，方便快速查看。"
+
+msgid "Active connections"
+msgstr "活动连接数"
+
+msgid "Active"
+msgstr "启用"
+
+msgid "Always show password"
+msgstr "始终显示密码"
+
+msgid "Arrange the swipe order, then open a page tab to choose what appears on screen. The layout adapts automatically to your choices."
+msgstr "先设置页面滑动顺序，再打开各页面标签选择屏幕上显示的内容；布局会根据选择自动调整。"
+
+msgid "Available but not enabled"
+msgstr "已检测但未启用"
+
+msgid "Background colour"
+msgstr "背景颜色"
+
+msgid "Background dimming"
+msgstr "背景压暗程度"
+
+msgid "Background style"
+msgstr "背景模式"
+
+msgid "Backgrounds"
+msgstr "背景"
+
+msgid "Cellular modem"
+msgstr "蜂窝网络"
+
+msgid "Change page every (seconds)"
+msgstr "页面切换间隔（秒）"
+
+msgid "Change pages automatically"
+msgstr "自动轮播页面"
+
+msgid "Check how the router reaches the internet and view its internet and local network addresses."
+msgstr "查看路由器的联网方式，以及互联网和本地网络地址。"
+
+msgid "Check whether ScreenPlus is working normally or refresh it after troubleshooting."
+msgstr "检查 ScreenPlus 是否正常运行，或在排查问题后刷新服务。"
+
+msgid "Choose an image smaller than 10 MB."
+msgstr "请选择小于 10 MB 的图片。"
+
+msgid "Choose both an on and off time for %s."
+msgstr "请同时为%s选择开启和关闭时间。"
+
+msgid "Choose how the page settles into place after you lift your finger."
+msgstr "选择手指离开后页面如何完成切换。"
+
+msgid "Choose how the screen looks, responds to touch and protects your Wi-Fi password."
+msgstr "设置屏幕显示、触摸操作和 Wi-Fi 密码保护方式。"
+
+msgid "Choose one fixed picture behind all page content, or a separate picture that moves with each page. Images are centre-cropped to 284 × 76 px and applied immediately."
+msgstr "可选择固定在所有页面内容下方的同一张图片，或为每个页面设置随页面移动的独立图片。图片会居中裁切为 284 × 76 像素并立即应用。"
+
+msgid "Colours"
+msgstr "颜色"
+
+msgid "Connected without internet"
+msgstr "已连接但无法访问互联网"
+
+msgid "Connection colours"
+msgstr "连接状态颜色"
+
+msgid "Copied. Save or Apply to keep these settings."
+msgstr "已复制。请保存或应用以保留这些设置。"
+
+msgid "Copy one day"
+msgstr "复制一天的设置"
+
+msgid "Copy to all other days"
+msgstr "复制到其他所有日期"
+
+msgid "CPU and memory usage"
+msgstr "CPU 和内存使用率"
+
+msgid "CPU usage and temperature"
+msgstr "CPU 使用率和温度"
+
+msgid "Current internet connection"
+msgstr "当前互联网连接"
+
+msgid "Darkens custom pictures so text stays easy to read. A higher value looks darker."
+msgstr "压暗自定义图片以保持文字清晰；数值越高，背景越暗。"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Different picture on each page"
+msgstr "每个页面使用独立图片"
+
+msgid "Custom days"
+msgstr "自定义每天"
+
+msgid "Display"
+msgstr "显示"
+
+msgid "Display and controls"
+msgstr "显示与控制"
+
+msgid "Display this page"
+msgstr "显示此页面"
+
+msgid "Divider colour"
+msgstr "分割线颜色"
+
+msgid "English"
+msgstr "英文"
+
+msgid "Every day"
+msgstr "每天"
+
+msgid "Error state"
+msgstr "错误状态"
+
+msgid "Ethernet"
+msgstr "以太网"
+
+msgid "Fan speed"
+msgstr "风扇转速"
+
+msgid "Friday"
+msgstr "星期五"
+
+msgid "Global background picture"
+msgstr "全局背景图片"
+
+msgid "Hide password and QR code"
+msgstr "隐藏密码和二维码"
+
+msgid "Home"
+msgstr "主页"
+
+msgid "Instant"
+msgstr "立即切换"
+
+msgid "Keep an eye on the router’s workload and cooling."
+msgstr "随时了解路由器的负载与散热状态。"
+
+msgid "Keep the screen continuously on, or use the schedule below. Turn this off to use the inactivity timeout instead."
+msgstr "保持屏幕常亮，或使用下方的定时设置。关闭此项后将改用空闲超时息屏。"
+
+msgid "Keep the screen on"
+msgstr "屏幕常亮"
+
+msgid "Live traffic"
+msgstr "实时速率"
+
+msgid "Local network IP address"
+msgstr "本地网络 IP 地址"
+
+msgid "Loop through pages"
+msgstr "循环切换页面"
+
+msgid "Main text colour"
+msgstr "主要文字颜色"
+
+msgid "Memory usage"
+msgstr "内存使用率"
+
+msgid "Monday"
+msgstr "星期一"
+
+msgid "Monday to Friday"
+msgstr "周一至周五"
+
+msgid "Network connections"
+msgstr "网络连接"
+
+msgid "Network snapshot"
+msgstr "网络概况"
+
+msgid "OpenClash"
+msgstr "OpenClash"
+
+msgid "Page content"
+msgstr "页面内容"
+
+msgid "Page order"
+msgstr "页面顺序"
+
+msgid "Pages"
+msgstr "页面"
+
+msgid "Pages and content"
+msgstr "页面与内容"
+
+msgid "Pages with smaller numbers appear first. Clear a value to restore its original position."
+msgstr "数字较小的页面排在前面；清空数值可恢复原始位置。"
+
+msgid "Performance snapshot"
+msgstr "性能概况"
+
+msgid "Personalise the colours and background pictures used across ScreenPlus. Clear a colour value to restore the original."
+msgstr "自定义 ScreenPlus 使用的颜色和背景图片；清空颜色值可恢复默认设置。"
+
+msgid "Press and hold a Wi-Fi row to open its sharing QR code, unless password sharing is hidden."
+msgstr "未隐藏密码分享时，长按 Wi-Fi 行可打开分享二维码。"
+
+msgid "Quickly check or share your Wi-Fi name and password."
+msgstr "快速查看或分享 Wi-Fi 名称和密码。"
+
+msgid "Recent activity"
+msgstr "最近活动"
+
+msgid "Refresh ScreenPlus"
+msgstr "刷新 ScreenPlus"
+
+msgid "Remove background"
+msgstr "移除背景"
+
+msgid "Restart ScreenPlus"
+msgstr "重启 ScreenPlus"
+
+msgid "Rotate 180°"
+msgstr "旋转 180°"
+
+msgid "Same picture on every page"
+msgstr "所有页面使用同一图片"
+
+msgid "Saturday"
+msgstr "星期六"
+
+msgid "Saturday and Sunday"
+msgstr "周六和周日"
+
+msgid "Schedule type"
+msgstr "定时方式"
+
+msgid "Screen brightness"
+msgstr "屏幕亮度"
+
+msgid "Screen language"
+msgstr "屏幕语言"
+
+msgid "Screen orientation"
+msgstr "屏幕方向"
+
+msgid "Screen status"
+msgstr "屏幕状态"
+
+msgid "ScreenPlus"
+msgstr "ScreenPlus"
+
+msgid "ScreenPlus could not complete this action."
+msgstr "ScreenPlus 无法完成此操作。"
+
+msgid "ScreenPlus is ready."
+msgstr "ScreenPlus 已准备就绪。"
+
+msgid "Secondary text colour"
+msgstr "次要文字颜色"
+
+msgid "Seconds"
+msgstr "秒"
+
+msgid "See current network activity and recent traffic changes."
+msgstr "查看当前网络活动和最近的流量变化。"
+
+msgid "Show QR code prompt"
+msgstr "显示二维码提示"
+
+msgid "Shown when no custom picture is set."
+msgstr "未设置自定义图片时显示此颜色。"
+
+msgid "Smooth (recommended)"
+msgstr "平滑（推荐）"
+
+msgid "Speed and total data"
+msgstr "速率和累计流量"
+
+msgid "Standard"
+msgstr "标准"
+
+msgid "Status and support"
+msgstr "状态与支持"
+
+msgid "Sunday"
+msgstr "星期日"
+
+msgid "Support"
+msgstr "支持"
+
+msgid "Swipe animation"
+msgstr "滑动动画"
+
+msgid "Swiping past the last page returns to the first page."
+msgstr "从最后一页继续滑动时返回第一页。"
+
+msgid "System status"
+msgstr "系统状态"
+
+msgid "Tap to show password"
+msgstr "点击显示密码"
+
+msgid "The background could not be removed."
+msgstr "无法移除背景图片。"
+
+msgid "The background could not be saved."
+msgstr "无法保存背景图片。"
+
+msgid "The connection is enabled and linked, but cannot reach the internet."
+msgstr "连接已启用且链路正常，但无法访问互联网。"
+
+msgid "The connection or device is available, but is not currently enabled."
+msgstr "已检测到连接或设备，但当前未启用。"
+
+msgid "The custom background has been removed."
+msgstr "自定义背景已移除。"
+
+msgid "The screen stays on only during the selected time ranges. The schedule repeats every week."
+msgstr "屏幕仅在选定时段内亮起，定时设置每周循环。"
+
+msgid "The screen turns off after this much time without a touch."
+msgstr "在这段时间内没有触摸操作时，屏幕将自动关闭。"
+
+msgid "The upload choices below change with this setting. Uploading a picture also selects its matching style."
+msgstr "下方的上传选项会随此设置变化；上传图片时也会自动选择对应的背景模式。"
+
+msgid "Theme"
+msgstr "主题"
+
+msgid "Theme and backgrounds"
+msgstr "主题与背景"
+
+msgid "Theme colour"
+msgstr "主题色"
+
+msgid "Theme colours"
+msgstr "主题颜色"
+
+msgid "This background could not be previewed. Try uploading it again."
+msgstr "无法预览此背景，请重新上传。"
+
+msgid "This image could not be opened. Please choose another file."
+msgstr "无法打开此图片，请选择其他文件。"
+
+msgid "This information is temporarily unavailable."
+msgstr "暂时无法获取此信息。"
+
+msgid "Thursday"
+msgstr "星期四"
+
+msgid "Time"
+msgstr "时间"
+
+msgid "Time zone name"
+msgstr "时区名称"
+
+msgid "Tuesday"
+msgstr "星期二"
+
+msgid "Turn off a row to keep the screen off for those days. An end time earlier than the start continues past midnight; equal times mean all day."
+msgstr "关闭某一行可让对应日期全天息屏。结束时间早于开始时间表示跨越午夜；两个时间相同表示全天亮屏。"
+
+msgid "Turn off after (seconds)"
+msgstr "空闲后息屏（秒）"
+
+msgid "Turn this off to use the original GL.iNet screen."
+msgstr "关闭后将使用 GL.iNet 官方屏幕服务。"
+
+msgid "Upload and download speed"
+msgstr "上行和下行速率"
+
+msgid "USB tethering"
+msgstr "USB 网络共享"
+
+msgid "Use a six-digit colour value, for example #37F59A."
+msgstr "请输入六位颜色值，例如 #37F59A。"
+
+msgid "Use screen schedule"
+msgstr "启用定时开关屏幕"
+
+msgid "Use ScreenPlus"
+msgstr "启用 ScreenPlus"
+
+msgid "Used for headings, highlights, active switches and healthy connections."
+msgstr "用于标题、重点内容、已开启的开关和正常连接。"
+
+msgid "Used for labels, units, supporting information and unavailable connections."
+msgstr "用于标签、单位、辅助信息和不可用的连接。"
+
+msgid "Used for separators and the track of an inactive switch."
+msgstr "用于分割线和未开启开关的轨道。"
+
+msgid "Used for the clock, important values, addresses, Wi-Fi names and passwords."
+msgstr "用于时钟、重要数值、地址、Wi-Fi 名称和密码。"
+
+msgid "Used when a service reports a problem."
+msgstr "用于服务报告异常时。"
+
+msgid "View OpenClash activity and control it directly from the screen."
+msgstr "查看 OpenClash 运行情况，并直接从屏幕控制开关。"
+
+msgid "Wednesday"
+msgstr "星期三"
+
+msgid "Weekdays and weekends"
+msgstr "工作日与周末"
+
+msgid "Weekday"
+msgstr "星期"
+
+msgid "Wi-Fi"
+msgstr "Wi-Fi"
+
+msgid "Wi-Fi password privacy"
+msgstr "Wi-Fi 密码显示方式"
+
+msgid "Wi-Fi repeater"
+msgstr "Wi-Fi 中继"
+
+msgid "Your new background is now in use."
+msgstr "新背景已应用。"
+
+msgid "to"
+msgstr "至"
+
+msgid "简体中文"
+msgstr "简体中文"

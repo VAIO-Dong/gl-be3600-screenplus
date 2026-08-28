@@ -166,6 +166,40 @@ fix for framebuffer waits. Confirm lack of visible tearing plus both normal
 and 270-degree orientations with physical swipes because synthetic input does
 not validate touch direction or subjective frame pacing.
 
+## Screen schedule
+
+The weekly schedule controls only the backlight and is active only when both
+`always_on` and `schedule_enabled` are set. With `always_on=0`, confirm that the
+existing inactivity timeout remains authoritative even if stale schedule
+options are present. With scheduling active, verify one interval containing
+the current local minute leaves the configured brightness in sysfs, and one
+interval excluding it writes zero. Restore the original UCI values and confirm
+the managed service after testing.
+
+Test a same-day interval, an interval crossing midnight, and a custom interval
+carried over from the previous day. Equal on/off times intentionally mean all
+day on only when that row is enabled. A disabled row means all day off. In
+LuCI, confirm Every day shows one compact range, Weekdays and weekends shows
+two ranges with independent enable switches, and Custom days shows seven
+compact rows. Copy to all other days must update the six unsaved enable states
+and time pairs before Apply is pressed. The schedule controls belong to the
+same Display and controls section immediately below Keep the screen on; with
+that flag disabled, no schedule heading or option may remain visible. Confirm
+that each range uses native minute-precision time controls.
+
+Regression-test the two common configurations directly: Monday through Friday
+09:00-19:00 with the weekend row disabled, and every day 08:00-00:00. The first
+must stay off all Saturday and Sunday; the second must turn off at midnight and
+remain off until 08:00. Also test a disabled custom day and a previous day's
+cross-midnight interval extending into it.
+
+With LuCI set to Simplified Chinese, reload all four ScreenPlus views and check
+their headings, option labels, descriptions, action buttons, notifications and
+menu entries. The package supplies `screenplus.zh-cn.lmo`; validate at least one
+ScreenPlus-specific sentence rather than relying on translations already
+provided by `base.zh-cn.lmo`. When a view changes, continue to version all four
+resource names together as described below.
+
 ## LVGL event ownership
 
 - Bind each Wi-Fi row's band index through callback user data. Do not infer the

@@ -152,6 +152,31 @@ return view.extend({
 		}
 	},
 
+	showBackgroundStatus: function(message) {
+		if (this.backgroundNotificationTimer) {
+			window.clearTimeout(this.backgroundNotificationTimer);
+			this.backgroundNotificationTimer = null;
+		}
+		if (this.backgroundNotification && this.backgroundNotification.parentNode)
+			this.backgroundNotification.parentNode.removeChild(this.backgroundNotification);
+
+		var notification = ui.addNotification(null, E('p', {}, message), 'info');
+		this.backgroundNotification = notification;
+		this.backgroundNotificationTimer = window.setTimeout(L.bind(function() {
+			if (this.backgroundNotification !== notification)
+				return;
+			this.backgroundNotification = null;
+			this.backgroundNotificationTimer = null;
+			if (!notification.parentNode)
+				return;
+			notification.classList.add('fade-out');
+			window.setTimeout(function() {
+				if (notification.parentNode)
+					notification.parentNode.removeChild(notification);
+			}, 500);
+		}, this), 3000);
+	},
+
 	handleBackgroundFile: function(page, event) {
 		var self = this;
 		var input = event.currentTarget;
@@ -175,8 +200,7 @@ return view.extend({
 				throw new Error(result && result.stderr || _('The background could not be saved.'));
 			self.setBackgroundPreview(page, convertedPreview);
 			self.setBackgroundModeControl(page === 'global' ? 'global' : 'page');
-			ui.addNotification(null, E('p', {},
-				_('Your new background is now in use.')), 'info');
+			self.showBackgroundStatus(_('Your new background is now in use.'));
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
 		}).finally(function() {
@@ -195,7 +219,7 @@ return view.extend({
 			self.setBackgroundPreview(page, null);
 			if (page === 'global')
 				self.setBackgroundModeControl('page');
-			ui.addNotification(null, E('p', {}, _('The custom background has been removed.')), 'info');
+			self.showBackgroundStatus(_('The custom background has been removed.'));
 		}).catch(function(error) {
 			ui.addNotification(null, E('p', {}, error.message));
 		}).finally(function() {
@@ -203,7 +227,7 @@ return view.extend({
 		});
 	},
 
-	renderUploader: function(page, title) {
+	renderUploader: function(page) {
 		var previewContainer = E('div', {
 			'id': 'screenplus-preview-container-' + page,
 			'style': 'display:none;margin-top:.5em'
@@ -216,111 +240,118 @@ return view.extend({
 			'click': ui.createHandlerFn(this, 'handleBackgroundRemove', page)
 		}, [ _('Remove background') ]);
 		this.loadBackgroundPreview(page, previewContainer, removeButton);
-		return E('div', { 'class': 'cbi-value' }, [
-			E('label', { 'class': 'cbi-value-title' }, [ title ]),
-			E('div', { 'class': 'cbi-value-field' }, [
-				E('input', {
-					'type': 'file',
-					'accept': 'image/png,image/jpeg,image/webp,image/bmp',
-					'change': ui.createHandlerFn(this, 'handleBackgroundFile', page)
-				}),
-				' ',
-				removeButton,
-				previewContainer
-			])
+		return E('div', {}, [
+			E('input', {
+				'type': 'file',
+				'accept': 'image/png,image/jpeg,image/webp,image/bmp',
+				'change': ui.createHandlerFn(this, 'handleBackgroundFile', page)
+			}),
+			' ',
+			removeButton,
+			previewContainer
 		]);
+	},
+
+	addBackgroundUploader: function(section, name, page, title, mode) {
+		var option = section.option(form.DummyValue, name, title);
+		option.depends('background_mode', mode);
+		option.renderWidget = L.bind(function() {
+			return this.renderUploader(page);
+		}, this);
+		return option;
 	},
 
 	render: function() {
 		var map = new form.Map('screenplus', _('Theme and backgrounds'),
 			_('Personalise the colours and background pictures used across ScreenPlus. Clear a colour value to restore the original.'));
-		var section = map.section(form.NamedSection, 'appearance', 'appearance', _('Colours'));
-		section.anonymous = true;
-		section.addremove = false;
-		section.tab('palette', _('Theme colours'));
-		section.tab('states', _('Connection colours'));
-		section.tab('backgrounds', _('Background settings'));
+		var colourSection = map.section(form.NamedSection, 'appearance', 'appearance', _('Colours'));
+		colourSection.anonymous = true;
+		colourSection.addremove = false;
+		colourSection.tab('palette', _('Theme colours'));
+		colourSection.tab('states', _('Connection colours'));
 
-		var option = section.taboption('palette', form.Value, 'accent', _('Theme colour'));
+		var option = colourSection.taboption('palette', form.Value, 'accent', _('Theme colour'));
 		option.default = '#37f59a';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Used for headings, highlights, active switches and healthy connections.');
 
-		option = section.taboption('palette', form.Value, 'primary', _('Main text colour'));
+		option = colourSection.taboption('palette', form.Value, 'primary', _('Main text colour'));
 		option.default = '#ffffff';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Used for the clock, important values, addresses, Wi-Fi names and passwords.');
 
-		option = section.taboption('palette', form.Value, 'secondary', _('Secondary text colour'));
+		option = colourSection.taboption('palette', form.Value, 'secondary', _('Secondary text colour'));
 		option.default = '#dcecff';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Used for labels, units, supporting information and unavailable connections.');
 
-		option = section.taboption('palette', form.Value, 'background', _('Page background colour'));
-		option.default = '#030912';
-		option.rmempty = true;
-		option.validate = validateColour;
-		option.description = _('Shown behind each page when no custom picture is used.');
-
-		option = section.taboption('palette', form.Value, 'border', _('Divider colour'));
+		option = colourSection.taboption('palette', form.Value, 'border', _('Divider colour'));
 		option.default = '#3b424a';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Used for separators and the track of an inactive switch.');
 
-		option = section.taboption('states', form.Value, 'standby', _('Available but not enabled'));
+		option = colourSection.taboption('states', form.Value, 'standby', _('Available but not enabled'));
 		option.default = '#4b9fff';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('The connection or device is available, but is not currently enabled.');
 
-		option = section.taboption('states', form.Value, 'warning', _('Connected without internet'));
+		option = colourSection.taboption('states', form.Value, 'warning', _('Connected without internet'));
 		option.default = '#ffdc55';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('The connection is enabled and linked, but cannot reach the internet.');
 
-		option = section.taboption('states', form.Value, 'error', _('Error state'));
+		option = colourSection.taboption('states', form.Value, 'error', _('Error state'));
 		option.default = '#ff5c70';
 		option.rmempty = true;
 		option.validate = validateColour;
 		option.description = _('Used when a service reports a problem.');
 
-		option = section.taboption('backgrounds', form.Value, 'overlay_opacity', _('Background dimming'));
+		var backgroundSection = map.section(form.NamedSection, 'appearance', 'appearance',
+			_('Backgrounds'),
+			_('Choose one fixed picture behind all page content, or a separate picture that moves with each page. Images are centre-cropped to 284 × 76 px and applied immediately.'));
+		backgroundSection.anonymous = true;
+		backgroundSection.addremove = false;
+
+		option = backgroundSection.option(form.Value, 'background', _('Background colour'));
+		option.default = '#030912';
+		option.rmempty = true;
+		option.validate = validateColour;
+		option.description = _('Shown when no custom picture is set.');
+
+		option = backgroundSection.option(form.Value, 'overlay_opacity', _('Background dimming'));
 		option.datatype = 'range(0,100)';
 		option.default = '35';
 		option.rmempty = true;
 		option.description = _('Darkens custom pictures so text stays easy to read. A higher value looks darker.');
 
-		option = section.taboption('backgrounds', form.ListValue, 'background_mode', _('Background style'));
+		option = backgroundSection.option(form.ListValue, 'background_mode', _('Background style'));
 		option.value('page', _('Different picture on each page'));
 		option.value('global', _('Same picture on every page'));
 		option.default = 'page';
 		option.rmempty = false;
-		option.description = _('Uploading a picture below automatically selects the matching style.');
+		option.description = _('The upload choices below change with this setting. Uploading a picture also selects its matching style.');
 
-		return map.render().then(L.bind(function(mapNode) {
-			return E([], [
-				mapNode,
-				E('div', { 'class': 'cbi-map' }, [
-					E('h2', {}, [ _('Background pictures') ]),
-					E('div', { 'class': 'cbi-map-descr' }, [
-						_('For an exact fit, use a 284 × 76 px PNG, JPEG, WebP or BMP image. Other sizes are centre-cropped to fit; the maximum file size is 10 MB. New pictures take effect immediately.')
-					]),
-					E('div', { 'class': 'cbi-section' }, [
-						this.renderUploader('global', _('All pages')),
-						this.renderUploader('home', _('Home')),
-						this.renderUploader('traffic', _('Live traffic')),
-						this.renderUploader('status', _('System status')),
-						this.renderUploader('wifi', _('Wi-Fi')),
-						this.renderUploader('network', _('Network connections')),
-						this.renderUploader('openclash', _('OpenClash'))
-					])
-				])
-			]);
-		}, this));
+		this.addBackgroundUploader(backgroundSection, '_background_global', 'global',
+			_('Global background picture'), 'global');
+		this.addBackgroundUploader(backgroundSection, '_background_home', 'home',
+			_('Home'), 'page');
+		this.addBackgroundUploader(backgroundSection, '_background_traffic', 'traffic',
+			_('Live traffic'), 'page');
+		this.addBackgroundUploader(backgroundSection, '_background_status', 'status',
+			_('System status'), 'page');
+		this.addBackgroundUploader(backgroundSection, '_background_wifi', 'wifi',
+			_('Wi-Fi'), 'page');
+		this.addBackgroundUploader(backgroundSection, '_background_network', 'network',
+			_('Network connections'), 'page');
+		this.addBackgroundUploader(backgroundSection, '_background_openclash', 'openclash',
+			_('OpenClash'), 'page');
+
+		return map.render();
 	}
 });

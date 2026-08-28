@@ -61,15 +61,26 @@ status for both the compact network page and diagnostics.
   navigation, transition and password policy.
 - Pages: one central order section followed by per-page visibility and field
   selection.
-- Appearance: theme, primary, secondary, background and divider palette plus
-  available-but-disabled/offline/fault state colours. Healthy states inherit
-  theme and missing connections inherit secondary.
-  Global/per-page background uploads apply immediately, with previews shown
-  only for installed images.
+- Display: inactivity timeout or Always on, with an optional weekly repeating
+  backlight schedule. The compact schedule supports one range for every day,
+  separate weekday/weekend rows, or seven custom rows with independent enable
+  switches and copying one day to the other six. Controls are inline below
+  Always on and use native time inputs.
+- Appearance: theme, primary, secondary and divider palette plus
+  available-but-disabled/offline/fault state colours. Background colour,
+  dimming, mode and matching upload controls are grouped separately. Healthy
+  states inherit theme and missing connections inherit secondary.
+  Global/per-page background uploads apply immediately, with only the upload
+  controls for the selected mode visible and previews shown only for installed
+  images. A global background stays fixed below moving page content, while
+  per-page backgrounds move with their pages.
 - Diagnostics: service/hardware state, live metrics, connectivity/OpenClash
   snapshot and bounded logs.
-- Idempotent schema-v14 migration preserves compatible settings and renames
-  legacy page/background assets.
+- All four LuCI views, menu entries, descriptions and feedback messages have a
+  bundled Simplified Chinese catalogue.
+- Idempotent schema-v16 migration preserves compatible settings, adds compact
+  weekday/weekend and per-day enable defaults, and retains legacy
+  page/background assets.
 - Native GL.iNet Toggle discovery through `/etc/gl-switch.d/screenplus.sh`,
   with ScreenPlus-aware ON/OFF labels, a firmware-checked frontend patch and
   deterministic hand-off to/from the retained official screen service.

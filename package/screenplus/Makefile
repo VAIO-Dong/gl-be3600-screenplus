@@ -1,13 +1,14 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=screenplus
-PKG_VERSION:=1.1.4
+PKG_VERSION:=1.2.0
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT OFL-1.1
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/lvgl/lvgl.git
 PKG_SOURCE_VERSION:=85aa60d18b3d5e5588d7b247abf90198f07c8a63
 PKG_MIRROR_HASH:=skip
+PKG_BUILD_DEPENDS:=luci-base/host
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -34,6 +35,9 @@ define Build/Prepare
 endef
 
 define Build/Compile
+	$(STAGING_DIR_HOSTPKG)/bin/po2lmo \
+		$(CURDIR)/../luci-app-screenplus/po/zh_Hans/screenplus.po \
+		$(PKG_BUILD_DIR)/screenplus.zh-cn.lmo
 	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_CPPFLAGS) \
 		-O2 -std=c11 -pthread -ffunction-sections -fdata-sections \
 		-ffile-prefix-map=$(PKG_BUILD_DIR)=. \
@@ -77,6 +81,9 @@ define Package/screenplus/install
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ../luci-app-screenplus/root/usr/share/rpcd/acl.d/luci-app-screenplus.json \
 		$(1)/usr/share/rpcd/acl.d/luci-app-screenplus.json
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/screenplus.zh-cn.lmo \
+		$(1)/usr/lib/lua/luci/i18n/screenplus.zh-cn.lmo
 	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/screenplus
 	$(INSTALL_DATA) ../luci-app-screenplus/htdocs/luci-static/resources/view/screenplus/*.js \
 		$(1)/www/luci-static/resources/view/screenplus/

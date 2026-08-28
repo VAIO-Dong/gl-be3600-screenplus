@@ -14,7 +14,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "screenplus/general-v112"
+			"path": "screenplus/general-v120"
 		}
 	},
 	"admin/system/screenplus/pages": {
@@ -22,7 +22,7 @@
 		"order": 20,
 		"action": {
 			"type": "view",
-			"path": "screenplus/pages-v113"
+			"path": "screenplus/pages-v120"
 		}
 	},
 	"admin/system/screenplus/appearance": {
@@ -30,7 +30,7 @@
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "screenplus/appearance-v113"
+			"path": "screenplus/appearance-v120"
 		}
 	},
 	"admin/system/screenplus/diagnostics": {
@@ -38,7 +38,7 @@
 		"order": 40,
 		"action": {
 			"type": "view",
-			"path": "screenplus/diagnostics-v112"
+			"path": "screenplus/diagnostics-v120"
 		}
 	}
 }

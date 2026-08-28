@@ -7,6 +7,19 @@
 
 #define SCREENPLUS_MAX_FIELDS 16
 #define SCREENPLUS_FIELD_LENGTH 24
+#define SCREENPLUS_WEEKDAY_COUNT 7
+
+struct screenplus_schedule_day {
+	bool enabled;
+	unsigned int on_minute;
+	unsigned int off_minute;
+};
+
+enum screenplus_schedule_mode {
+	SCREENPLUS_SCHEDULE_DAILY,
+	SCREENPLUS_SCHEDULE_WORKWEEK,
+	SCREENPLUS_SCHEDULE_WEEKLY,
+};
 
 enum screenplus_page_id {
 	SCREENPLUS_PAGE_HOME,
@@ -40,6 +53,12 @@ struct screenplus_config {
 	int rotation;
 	bool always_on;
 	unsigned int idle_timeout_seconds;
+	bool schedule_enabled;
+	enum screenplus_schedule_mode schedule_mode;
+	struct screenplus_schedule_day daily_schedule;
+	struct screenplus_schedule_day weekday_schedule;
+	struct screenplus_schedule_day weekend_schedule;
+	struct screenplus_schedule_day weekly_schedule[SCREENPLUS_WEEKDAY_COUNT];
 	bool swipe_loop;
 	bool auto_carousel;
 	unsigned int carousel_interval_seconds;
@@ -65,6 +84,8 @@ int screenplus_config_load(struct screenplus_config *config, const char *path);
 int screenplus_timezone_load(struct screenplus_config *config, const char *path);
 bool screenplus_page_has_field(const struct screenplus_config *config,
 			       enum screenplus_page_id page, const char *field);
+bool screenplus_schedule_allows_backlight(const struct screenplus_config *config,
+					  int weekday, unsigned int minute);
 const char *screenplus_page_name(enum screenplus_page_id page);
 
 #endif

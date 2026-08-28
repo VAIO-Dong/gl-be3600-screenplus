@@ -36,6 +36,10 @@ static void set_default_page(struct screenplus_page_config *page, int order,
 		add_field(page, fields[index]);
 }
 
+static const char *const weekday_names[SCREENPLUS_WEEKDAY_COUNT] = {
+	"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
+};
+
 void screenplus_config_defaults(struct screenplus_config *config)
 {
 	static const char *const home_fields[] = { "time", "date", "weekday" };
@@ -55,6 +59,18 @@ void screenplus_config_defaults(struct screenplus_config *config)
 	config->brightness = 5;
 	config->rotation = 90;
 	config->idle_timeout_seconds = 180;
+	config->schedule_mode = SCREENPLUS_SCHEDULE_DAILY;
+	config->daily_schedule.enabled = true;
+	config->daily_schedule.on_minute = 8U * 60U;
+	config->daily_schedule.off_minute = 23U * 60U;
+	config->weekday_schedule.enabled = true;
+	config->weekday_schedule.on_minute = 9U * 60U;
+	config->weekday_schedule.off_minute = 19U * 60U;
+	config->weekend_schedule.enabled = false;
+	config->weekend_schedule.on_minute = 9U * 60U;
+	config->weekend_schedule.off_minute = 19U * 60U;
+	for (unsigned int day = 0; day < SCREENPLUS_WEEKDAY_COUNT; ++day)
+		config->weekly_schedule[day] = config->daily_schedule;
 	config->swipe_loop = true;
 	config->slide_animation = true;
 	config->carousel_interval_seconds = 10;
@@ -162,6 +178,76 @@ static uint32_t parse_colour(const char *value, uint32_t fallback)
 	return (uint32_t)parsed;
 }
 
+static unsigned int parse_time(const char *value, unsigned int fallback)
+{
+	if (!value || strlen(value) != 5 || value[2] != ':' ||
+	    !isdigit((unsigned char)value[0]) || !isdigit((unsigned char)value[1]) ||
+	    !isdigit((unsigned char)value[3]) || !isdigit((unsigned char)value[4]))
+		return fallback;
+	unsigned int hour = (unsigned int)(value[0] - '0') * 10U + (unsigned int)(value[1] - '0');
+	unsigned int minute = (unsigned int)(value[3] - '0') * 10U + (unsigned int)(value[4] - '0');
+	return hour < 24U && minute < 60U ? hour * 60U + minute : fallback;
+}
+
+static bool apply_schedule_range_option(struct screenplus_schedule_day *range,
+					const char *prefix, bool can_disable,
+					const char *key, const char *value)
+{
+	char expected[40];
+	if (can_disable) {
+		snprintf(expected, sizeof(expected), "%s_enabled", prefix);
+		if (strcmp(key, expected) == 0) {
+			range->enabled = parse_boolean(value);
+			return true;
+		}
+	}
+	snprintf(expected, sizeof(expected), "%s_on", prefix);
+	if (strcmp(key, expected) == 0) {
+		range->on_minute = parse_time(value, range->on_minute);
+		return true;
+	}
+	snprintf(expected, sizeof(expected), "%s_off", prefix);
+	if (strcmp(key, expected) == 0) {
+		range->off_minute = parse_time(value, range->off_minute);
+		return true;
+	}
+	return false;
+}
+
+static void apply_schedule_option(struct screenplus_config *config,
+				  const char *key, const char *value)
+{
+	if (strcmp(key, "schedule_enabled") == 0) {
+		config->schedule_enabled = parse_boolean(value);
+		return;
+	}
+	if (strcmp(key, "schedule_mode") == 0) {
+		if (strcmp(value, "workweek") == 0)
+			config->schedule_mode = SCREENPLUS_SCHEDULE_WORKWEEK;
+		else if (strcmp(value, "weekly") == 0)
+			config->schedule_mode = SCREENPLUS_SCHEDULE_WEEKLY;
+		else
+			config->schedule_mode = SCREENPLUS_SCHEDULE_DAILY;
+		return;
+	}
+	if (apply_schedule_range_option(&config->daily_schedule, "schedule_daily",
+		false, key, value))
+		return;
+	if (apply_schedule_range_option(&config->weekday_schedule, "schedule_weekday",
+		true, key, value))
+		return;
+	if (apply_schedule_range_option(&config->weekend_schedule, "schedule_weekend",
+		true, key, value))
+		return;
+	for (unsigned int day = 0; day < SCREENPLUS_WEEKDAY_COUNT; ++day) {
+		char prefix[32];
+		snprintf(prefix, sizeof(prefix), "schedule_%s", weekday_names[day]);
+		if (apply_schedule_range_option(&config->weekly_schedule[day], prefix,
+			true, key, value))
+			return;
+	}
+}
+
 static void apply_main_option(struct screenplus_config *config,
 			      const char *key, const char *value)
 {
@@ -195,6 +281,8 @@ static void apply_main_option(struct screenplus_config *config,
 			config->password_mode = SCREENPLUS_PASSWORD_TAP;
 	} else if (strcmp(key, "page_transition") == 0)
 		config->slide_animation = strcmp(value, "slide") == 0;
+	else if (strncmp(key, "schedule_", 9) == 0)
+		apply_schedule_option(config, key, value);
 }
 
 static void apply_appearance_option(struct screenplus_config *config,
@@ -332,4 +420,50 @@ bool screenplus_page_has_field(const struct screenplus_config *config,
 			return true;
 	}
 	return false;
+}
+
+static bool schedule_interval_active(const struct screenplus_schedule_day *today,
+				     const struct screenplus_schedule_day *previous,
+				     unsigned int minute)
+{
+	if (today->enabled) {
+		if (today->on_minute == today->off_minute)
+			return true;
+		if (today->on_minute < today->off_minute) {
+			if (minute >= today->on_minute && minute < today->off_minute)
+				return true;
+		} else if (minute >= today->on_minute) {
+			return true;
+		}
+	}
+	return previous->enabled && previous->on_minute > previous->off_minute &&
+		minute < previous->off_minute;
+}
+
+static const struct screenplus_schedule_day *workweek_schedule_for_day(
+	const struct screenplus_config *config, int weekday)
+{
+	return weekday >= 1 && weekday <= 5 ? &config->weekday_schedule :
+		&config->weekend_schedule;
+}
+
+bool screenplus_schedule_allows_backlight(const struct screenplus_config *config,
+					  int weekday, unsigned int minute)
+{
+	if (!config || !config->schedule_enabled || weekday < 0 ||
+	    weekday >= SCREENPLUS_WEEKDAY_COUNT || minute >= 24U * 60U)
+		return true;
+	if (config->schedule_mode == SCREENPLUS_SCHEDULE_DAILY) {
+		return schedule_interval_active(&config->daily_schedule,
+			&config->daily_schedule, minute);
+	}
+
+	int previous_day = (weekday + SCREENPLUS_WEEKDAY_COUNT - 1) % SCREENPLUS_WEEKDAY_COUNT;
+	if (config->schedule_mode == SCREENPLUS_SCHEDULE_WORKWEEK) {
+		return schedule_interval_active(workweek_schedule_for_day(config, weekday),
+			workweek_schedule_for_day(config, previous_day), minute);
+	}
+
+	return schedule_interval_active(&config->weekly_schedule[weekday],
+		&config->weekly_schedule[previous_day], minute);
 }

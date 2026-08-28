@@ -147,6 +147,7 @@ static unsigned int qr_wifi_band;
 static struct screenplus_config app_config;
 static lv_display_t *main_display;
 static bool backlight_on = true;
+static void *global_background_buffer;
 static void *background_buffers[SCREENPLUS_PAGE_COUNT];
 static int requested_start_page = -1;
 static int requested_start_index = -1;
@@ -260,6 +261,7 @@ static const char *display_state_text(enum screenplus_state state)
 	}
 }
 
+static void add_global_background(lv_obj_t *screen);
 static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page);
 static void set_label_text_if_changed(lv_obj_t *label, const char *text);
 static void set_page_visible(lv_obj_t *page, bool visible);
@@ -279,7 +281,10 @@ static lv_obj_t *create_page(lv_obj_t *parent, enum screenplus_page_id page)
 {
 	lv_obj_t *object = lv_obj_create(parent);
 	style_screen(object);
-	add_page_background(object, page);
+	if (app_config.global_background)
+		lv_obj_set_style_bg_opa(object, LV_OPA_TRANSP, 0);
+	else
+		add_page_background(object, page);
 	lv_obj_add_flag(object, LV_OBJ_FLAG_CLICKABLE);
 	return object;
 }
@@ -298,41 +303,32 @@ static lv_obj_t *create_divider(lv_obj_t *parent, int x, int y, int width, int h
 	return line;
 }
 
-static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page)
+static bool add_background(lv_obj_t *parent, const char *name, void **buffer_slot)
 {
-	char expected_name[32];
-	if (app_config.global_background)
-		strcpy(expected_name, "global.rgb565");
-	else {
-		snprintf(expected_name, sizeof(expected_name), "%s.rgb565",
-			screenplus_page_name(page));
-		if (strcmp(app_config.pages[page].background, expected_name) != 0)
-			return;
-	}
 	char path[192];
-	snprintf(path, sizeof(path), "/usr/share/screenplus/backgrounds/%s", expected_name);
+	snprintf(path, sizeof(path), "/usr/share/screenplus/backgrounds/%s", name);
 	FILE *file = fopen(path, "rb");
 	if (!file)
-		return;
+		return false;
 	const size_t expected_size = 284U * 76U * 2U;
 	void *buffer = malloc(expected_size);
 	if (!buffer) {
 		fclose(file);
-		return;
+		return false;
 	}
 	bool valid = fread(buffer, 1, expected_size, file) == expected_size && fgetc(file) == EOF;
 	fclose(file);
 	if (!valid) {
 		free(buffer);
-		return;
+		return false;
 	}
-	background_buffers[page] = buffer;
-	lv_obj_t *canvas = lv_canvas_create(screen);
+	*buffer_slot = buffer;
+	lv_obj_t *canvas = lv_canvas_create(parent);
 	lv_canvas_set_buffer(canvas, buffer, 284, 76, LV_COLOR_FORMAT_RGB565);
 	lv_obj_set_pos(canvas, 0, 0);
 	lv_obj_clear_flag(canvas, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 	if (app_config.overlay_opacity) {
-		lv_obj_t *overlay = lv_obj_create(screen);
+		lv_obj_t *overlay = lv_obj_create(parent);
 		lv_obj_set_pos(overlay, 0, 0);
 		lv_obj_set_size(overlay, 284, 76);
 		lv_obj_set_style_radius(overlay, 0, 0);
@@ -343,6 +339,23 @@ static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page)
 			(lv_opa_t)(255U * app_config.overlay_opacity / 100U), 0);
 		lv_obj_clear_flag(overlay, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 	}
+	return true;
+}
+
+static void add_global_background(lv_obj_t *screen)
+{
+	if (app_config.global_background)
+		add_background(screen, "global.rgb565", &global_background_buffer);
+}
+
+static void add_page_background(lv_obj_t *screen, enum screenplus_page_id page)
+{
+	char expected_name[32];
+	snprintf(expected_name, sizeof(expected_name), "%s.rgb565",
+		screenplus_page_name(page));
+	if (strcmp(app_config.pages[page].background, expected_name) != 0)
+		return;
+	add_background(screen, expected_name, &background_buffers[page]);
 }
 
 static lv_obj_t *create_label(lv_obj_t *parent, const char *text, int x, int y,
@@ -781,9 +794,21 @@ static void manage_idle_state(lv_timer_t *timer)
 	(void)timer;
 	if (!main_display)
 		return;
-	bool should_be_on = app_config.always_on ||
-		reset_overlay_active ||
-		lv_display_get_inactive_time(main_display) < app_config.idle_timeout_seconds * 1000U;
+	bool should_be_on;
+	if (app_config.always_on && app_config.schedule_enabled) {
+		time_t now = time(NULL);
+		struct tm local;
+		should_be_on = true;
+		if (localtime_r(&now, &local))
+			should_be_on = screenplus_schedule_allows_backlight(&app_config,
+				local.tm_wday, (unsigned int)local.tm_hour * 60U +
+				(unsigned int)local.tm_min);
+	} else {
+		should_be_on = app_config.always_on ||
+			lv_display_get_inactive_time(main_display) < app_config.idle_timeout_seconds * 1000U;
+	}
+	if (reset_overlay_active)
+		should_be_on = true;
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
 		if (password_revealed[band] && password_reveal_deadline[band] &&
@@ -1928,6 +1953,7 @@ static void build_ui(void)
 {
 	dashboard_screen = lv_obj_create(NULL);
 	style_screen(dashboard_screen);
+	add_global_background(dashboard_screen);
 	clock_screen = build_clock_screen(dashboard_screen);
 	status_screen = build_status_screen(dashboard_screen);
 	traffic_screen = build_traffic_screen(dashboard_screen);
@@ -2121,13 +2147,19 @@ int main(int argc, char **argv)
 	sigaction(SIGTERM, &action, NULL);
 	sigaction(SIGHUP, &action, NULL);
 	if (options.config_once) {
+		const char *schedule_mode = app_config.schedule_mode == SCREENPLUS_SCHEDULE_WORKWEEK ?
+			"workweek" : app_config.schedule_mode == SCREENPLUS_SCHEDULE_WEEKLY ?
+			"weekly" : "daily";
 		printf("{\"enabled\":%s,\"language\":\"%s\",\"brightness\":%d,"
-		       "\"rotation\":%d,\"always_on\":%s,\"swipe_loop\":%s,"
+		       "\"rotation\":%d,\"always_on\":%s,\"schedule_enabled\":%s,"
+		       "\"schedule_mode\":\"%s\",\"swipe_loop\":%s,"
 		       "\"auto_carousel\":%s,\"carousel_interval\":%u,"
 		       "\"timezone_rule\":\"%s\",\"timezone_name\":\"%s\",\"pages\":{",
 		       app_config.enabled ? "true" : "false", app_config.chinese ? "zh_cn" : "en",
 		       app_config.brightness, app_config.rotation,
 		       app_config.always_on ? "true" : "false",
+		       app_config.schedule_enabled ? "true" : "false",
+		       schedule_mode,
 		       app_config.swipe_loop ? "true" : "false",
 		       app_config.auto_carousel ? "true" : "false",
 		       app_config.carousel_interval_seconds,
@@ -2325,6 +2357,8 @@ int main(int argc, char **argv)
 	if (system_worker_started)
 		pthread_join(system_worker_thread, NULL);
 	lv_deinit();
+	free(global_background_buffer);
+	global_background_buffer = NULL;
 	for (int page = 0; page < SCREENPLUS_PAGE_COUNT; ++page) {
 		free(background_buffers[page]);
 		background_buffers[page] = NULL;
