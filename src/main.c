@@ -12,13 +12,13 @@
 #include <unistd.h>
 
 #include <lvgl.h>
-#include <src/drivers/display/fb/lv_linux_fbdev.h>
 #include <src/drivers/evdev/lv_evdev.h>
 #include <src/libs/qrcode/lv_qrcode.h>
 
 #include "app_config.h"
 #include "metrics.h"
 #include "safe_exec.h"
+#include "screenplus_fbdev.h"
 #include "system_info.h"
 
 LV_FONT_DECLARE(screenplus_ui_14);
@@ -35,6 +35,8 @@ LV_FONT_DECLARE(screenplus_reset_16);
  * as stale. Leaves the normal cancel-and-release flow untouched. */
 #define RESET_RECOVERY_MS (RESET_CANCEL_MS + 5000U)
 #define RESET_STAGE_COUNT 3U
+#define TOUCH_READ_PERIOD_MS 10U
+#define PAGE_DRAG_START_PX 6
 
 struct options {
 	const char *framebuffer;
@@ -719,7 +721,8 @@ static void page_drag_event(lv_event_t *event)
 		int32_t horizontal = point.x - drag_start_point.x;
 		int32_t vertical = point.y - drag_start_point.y;
 		if (!drag_moved) {
-			if (abs(horizontal) < 12 || abs(horizontal) <= abs(vertical))
+			if (abs(horizontal) < PAGE_DRAG_START_PX ||
+			    abs(horizontal) <= abs(vertical))
 				return;
 			drag_moved = true;
 		}
@@ -2233,8 +2236,8 @@ int main(int argc, char **argv)
 
 	lv_init();
 	lv_tick_set_cb(monotonic_milliseconds);
-	lv_display_t *display = lv_linux_fbdev_create();
-	if (!display || lv_linux_fbdev_set_file(display, options.framebuffer) != LV_RESULT_OK) {
+	lv_display_t *display = screenplus_fbdev_create(options.framebuffer);
+	if (!display) {
 		fprintf(stderr, "screenplus: failed to initialize framebuffer %s\n", options.framebuffer);
 		lv_deinit();
 		return 1;
@@ -2261,6 +2264,13 @@ int main(int argc, char **argv)
 		lv_evdev_set_swap_axes(touch, false);
 		lv_evdev_set_calibration(touch, 0, 0, 75, 283);
 		lv_indev_set_display(touch, display);
+		/* Keep touch sampling independent from the framebuffer cadence.
+		 * The display consumes the newest position on each frame while a 10 ms
+		 * input timer reduces finger-to-frame latency and coalesces intermediate
+		 * points instead of trying to render each one. */
+		lv_timer_t *touch_read_timer = lv_indev_get_read_timer(touch);
+		if (touch_read_timer)
+			lv_timer_set_period(touch_read_timer, TOUCH_READ_PERIOD_MS);
 	}
 
 	backlight_on = false;

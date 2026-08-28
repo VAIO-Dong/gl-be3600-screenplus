@@ -101,6 +101,71 @@ The scripts support the Windows PowerShell 5.1 runtime shipped with Windows.
 For a Wi-Fi row test, tapping 2.4 GHz should change only top; tapping 5 GHz
 should change only bottom. Do not attach or publish a password-revealed PNG.
 
+## Frame pacing and swipe performance
+
+Confirm the panel driver's real transfer limit before changing LVGL refresh
+timing:
+
+~~~sh
+dmesg | grep 'frame buffer'
+~~~
+
+The confirmed GL-BE3600 driver line reports a 76 x 284 framebuffer, 42 KiB of
+video memory, a 4 KiB transfer buffer, `fps=50`, and SPI at 50 MHz. Do not use
+that log line or `msync(MS_SYNC)` latency as proof of physical refresh rate.
+`msync` does not wait for this driver's deferred SPI transfer.
+
+Build the hardware probe and stop the managed display service before paced
+tests:
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-hwtest.ps1
+~~~
+
+~~~sh
+/tmp/screenplus-hwtest benchmark 60
+/tmp/screenplus-hwtest paced 20 100 pwrite
+/tmp/screenplus-hwtest synchronised 60
+/tmp/screenplus-hwtest vsync 3
+~~~
+
+A frame contains 43,168 bytes. Its ideal 50 MHz SPI wire time is 6.907 ms, but
+the operating limit must include driver scheduling and transfer completion.
+Count the `78b5000.spi`, relevant `bam_dma`, and `TE_GPIO` interrupt deltas
+around a paced test. On the confirmed firmware, 100 submissions at 20 ms
+produced 100 panel updates; `FBIO_WAITFORVSYNC` is unsupported (`ENOTTY`). TE
+only becomes active around transfers and must not be interpreted as a
+free-running panel refresh counter in isolation.
+
+The synchronised test waits for five SPI completion interrupts before writing
+the next framebuffer image. The confirmed device averaged 16.328 ms per frame,
+with a 16.971 ms P95 and 18.378 ms maximum, for an overlap-free measured ceiling
+of about 61 FPS. Use this test rather than the probe log when changing pacing.
+
+Page dragging begins after 6 logical horizontal pixels, reduced from the old
+12-pixel threshold. Use the FIFO input method for repeatable 5-8 pixel boundary
+tests, then confirm with a real finger that taps still activate controls without
+accidentally starting a page drag.
+
+Do not use an mmap framebuffer write path for the daemon. Under page pressure,
+`fb_deferred_io_mkwrite` blocked the LVGL thread for 216-512 ms and made rows
+appear progressively. In the controlled 20 ms test, mmap writes had a 16.6 ms
+P95 and a 388 ms maximum, while a coherent full-frame `pwrite` had a 0.17 ms
+P95 and a 0.26 ms maximum. ScreenPlus uses two full LVGL render buffers plus a
+two-slot latest-frame queue. The display thread rotates and submits one complete
+native frame, then waits for its fifth SPI interrupt before submitting another.
+Keep the 16 ms LVGL request period so rendering can feed the measured roughly
+60 Hz safe ceiling. Sample touch independently at 10 ms.
+
+For an A/B test, use a `/tmp` standalone binary and follow the service stop and
+restore rules below. During a real-finger swipe, sample the ScreenPlus process
+with `top`. Low CPU together with intermittent `D` state indicates waiting in
+the framebuffer/SPI path rather than a software renderer that needs more CPU.
+Match the vendor service's `nice -20` priority, but do not treat priority as a
+fix for framebuffer waits. Confirm lack of visible tearing plus both normal
+and 270-degree orientations with physical swipes because synthetic input does
+not validate touch direction or subjective frame pacing.
+
 ## LVGL event ownership
 
 - Bind each Wi-Fi row's band index through callback user data. Do not infer the

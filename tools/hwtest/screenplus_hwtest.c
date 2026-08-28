@@ -1,11 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <errno.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +35,13 @@ static long monotonic_milliseconds(void)
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	return now.tv_sec * 1000L + now.tv_nsec / 1000000L;
+}
+
+static uint64_t monotonic_nanoseconds(void)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
 }
 
 static int read_integer_file(const char *path, int *value)
@@ -319,6 +328,370 @@ static int command_pattern(const char *fb_path, int rotation, int seconds)
 	return 0;
 }
 
+static int compare_uint64(const void *left, const void *right)
+{
+	uint64_t a = *(const uint64_t *)left;
+	uint64_t b = *(const uint64_t *)right;
+	return a < b ? -1 : a > b ? 1 : 0;
+}
+
+static uint64_t read_named_interrupts(const char *name, unsigned int occurrence)
+{
+	FILE *file = fopen("/proc/interrupts", "r");
+	if (!file)
+		return 0;
+	char line[512];
+	uint64_t total = 0;
+	while (fgets(line, sizeof(line), file)) {
+		if (!strstr(line, name))
+			continue;
+		if (occurrence) {
+			--occurrence;
+			continue;
+		}
+		char *position = strchr(line, ':');
+		if (!position)
+			break;
+		for (++position;;) {
+			while (isspace((unsigned char)*position))
+				++position;
+			if (!isdigit((unsigned char)*position))
+				break;
+			char *end = NULL;
+			total += strtoull(position, &end, 10);
+			if (!end || end == position)
+				break;
+			position = end;
+		}
+		break;
+	}
+	fclose(file);
+	return total;
+}
+
+static int open_interrupt_counter(const char *name)
+{
+	FILE *file = fopen("/proc/interrupts", "r");
+	if (!file)
+		return -1;
+	char line[512];
+	int interrupt = -1;
+	while (fgets(line, sizeof(line), file)) {
+		if (!strstr(line, name))
+			continue;
+		char *end = NULL;
+		long value = strtol(line, &end, 10);
+		if (end && end != line && value >= 0 && value <= INT32_MAX)
+			interrupt = (int)value;
+		break;
+	}
+	fclose(file);
+	if (interrupt < 0)
+		return -1;
+	char path[96];
+	snprintf(path, sizeof(path), "/sys/kernel/irq/%d/per_cpu_count", interrupt);
+	return open(path, O_RDONLY | O_CLOEXEC);
+}
+
+static uint64_t read_interrupt_counter(int fd)
+{
+	char buffer[128];
+	ssize_t bytes = pread(fd, buffer, sizeof(buffer) - 1U, 0);
+	if (bytes <= 0)
+		return 0;
+	buffer[bytes] = '\0';
+	uint64_t total = 0;
+	char *position = buffer;
+	while (*position) {
+		char *end = NULL;
+		total += strtoull(position, &end, 10);
+		if (!end || end == position)
+			break;
+		position = end;
+		if (*position == ',')
+			++position;
+		else
+			break;
+	}
+	return total;
+}
+
+static void sleep_until(uint64_t deadline)
+{
+	struct timespec target = {
+		.tv_sec = (time_t)(deadline / 1000000000ULL),
+		.tv_nsec = (long)(deadline % 1000000000ULL),
+	};
+	while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &target, NULL) == EINTR &&
+	       !interrupted) { }
+}
+
+static int benchmark_region(struct framebuffer *fb, size_t bytes, int frames,
+			    const char *name)
+{
+	const int warmup_frames = 5;
+	uint64_t *samples = calloc((size_t)frames, sizeof(*samples));
+	if (!samples)
+		return -1;
+	for (int frame = 0; frame < warmup_frames + frames && !interrupted; ++frame) {
+		uint16_t colour = frame & 1 ? rgb565(245, 248, 255) : rgb565(6, 12, 24);
+		uint64_t started = monotonic_nanoseconds();
+		for (size_t offset = 0; offset + sizeof(colour) <= bytes;
+		     offset += sizeof(colour))
+			memcpy(fb->memory + offset, &colour, sizeof(colour));
+		if (msync(fb->memory, fb->length, MS_SYNC) != 0) {
+			free(samples);
+			return -1;
+		}
+		uint64_t elapsed = monotonic_nanoseconds() - started;
+		if (frame >= warmup_frames)
+			samples[frame - warmup_frames] = elapsed;
+	}
+	if (interrupted) {
+		free(samples);
+		return -1;
+	}
+	qsort(samples, (size_t)frames, sizeof(*samples), compare_uint64);
+	uint64_t total = 0;
+	for (int frame = 0; frame < frames; ++frame)
+		total += samples[frame];
+	double average_ms = (double)total / (double)frames / 1000000.0;
+	double fps = average_ms > 0.0 ? 1000.0 / average_ms : 0.0;
+	int p95_index = (frames * 95 + 99) / 100 - 1;
+	printf("{\"mode\":\"%s\",\"frames\":%d,\"bytes\":%zu,"
+	       "\"average_ms\":%.3f,\"p50_ms\":%.3f,\"p95_ms\":%.3f,"
+	       "\"maximum_ms\":%.3f,\"fps\":%.2f}\n",
+	       name, frames, bytes, average_ms,
+	       (double)samples[frames / 2] / 1000000.0,
+	       (double)samples[p95_index] / 1000000.0,
+	       (double)samples[frames - 1] / 1000000.0, fps);
+	free(samples);
+	return 0;
+}
+
+static int command_benchmark(const char *fb_path, int frames)
+{
+	struct framebuffer fb;
+	if (framebuffer_open(&fb, fb_path) != 0) {
+		fprintf(stderr, "Cannot prepare %s: %s\n", fb_path, strerror(errno));
+		framebuffer_close(&fb, 0);
+		return 1;
+	}
+	size_t page_bytes = fb.length < 4096U ? fb.length : 4096U;
+	printf("{\"frame_bytes\":%zu,\"frame_bits\":%zu,"
+	       "\"spi_hz\":50000000,\"theoretical_wire_ms\":%.3f,"
+	       "\"theoretical_fps\":%.2f}\n",
+	       fb.length, fb.length * 8U,
+	       (double)fb.length * 8.0 / 50000000.0 * 1000.0,
+	       50000000.0 / ((double)fb.length * 8.0));
+	int result = benchmark_region(&fb, fb.length, frames, "full");
+	if (result == 0) {
+		memcpy(fb.memory, fb.saved, fb.length);
+		if (msync(fb.memory, fb.length, MS_SYNC) != 0)
+			result = -1;
+	}
+	if (result == 0)
+		result = benchmark_region(&fb, page_bytes, frames, "page");
+	framebuffer_close(&fb, 1);
+	if (result != 0) {
+		fprintf(stderr, "Framebuffer benchmark failed: %s\n", strerror(errno));
+		return 1;
+	}
+	return 0;
+}
+
+static int command_vsync(const char *fb_path, int waits)
+{
+	int fd = open(fb_path, O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "Cannot open %s: %s\n", fb_path, strerror(errno));
+		return 1;
+	}
+	for (int index = 0; index < waits && !interrupted; ++index) {
+		uint32_t argument = 0;
+		uint64_t started = monotonic_nanoseconds();
+		int result = ioctl(fd, FBIO_WAITFORVSYNC, &argument);
+		int saved_errno = errno;
+		printf("{\"wait\":%d,\"result\":%d,\"errno\":%d,\"elapsed_ms\":%.3f}\n",
+		       index, result, result == 0 ? 0 : saved_errno,
+		       (double)(monotonic_nanoseconds() - started) / 1000000.0);
+		if (result != 0) {
+			close(fd);
+			return 1;
+		}
+	}
+	close(fd);
+	return interrupted ? 1 : 0;
+}
+
+static int command_synchronised(const char *fb_path, int frames)
+{
+	int fd = open(fb_path, O_RDWR | O_CLOEXEC);
+	int irq_fd = open_interrupt_counter("78b5000.spi");
+	struct fb_fix_screeninfo fixed;
+	struct fb_var_screeninfo variable;
+	if (fd < 0 || irq_fd < 0 || ioctl(fd, FBIOGET_FSCREENINFO, &fixed) < 0 ||
+	    ioctl(fd, FBIOGET_VSCREENINFO, &variable) < 0) {
+		fprintf(stderr, "Cannot prepare synchronised test: %s\n", strerror(errno));
+		if (irq_fd >= 0) close(irq_fd);
+		if (fd >= 0) close(fd);
+		return 1;
+	}
+	size_t frame_bytes = (size_t)fixed.line_length * variable.yres;
+	uint8_t *frame = malloc(frame_bytes);
+	uint8_t *saved = malloc(frame_bytes);
+	uint64_t *samples = calloc((size_t)frames, sizeof(*samples));
+	if (!frame || !saved || !samples ||
+	    pread(fd, saved, frame_bytes, 0) != (ssize_t)frame_bytes) {
+		fprintf(stderr, "Cannot allocate or save framebuffer: %s\n", strerror(errno));
+		free(samples);
+		free(saved);
+		free(frame);
+		close(irq_fd);
+		close(fd);
+		return 1;
+	}
+	int completed = 0;
+	uint64_t spi_before = read_named_interrupts("78b5000.spi", 0);
+	uint64_t dma_before = read_named_interrupts("bam_dma", 0);
+	uint64_t te_before = read_named_interrupts("TE_GPIO", 0);
+	uint64_t test_started = monotonic_nanoseconds();
+	for (int index = 0; index < frames && !interrupted; ++index) {
+		uint16_t colour = index & 1 ? rgb565(245, 248, 255) : rgb565(6, 12, 24);
+		for (size_t offset = 0; offset + sizeof(colour) <= frame_bytes;
+		     offset += sizeof(colour))
+			memcpy(frame + offset, &colour, sizeof(colour));
+		uint64_t before = read_interrupt_counter(irq_fd);
+		uint64_t started = monotonic_nanoseconds();
+		if (pwrite(fd, frame, frame_bytes, 0) != (ssize_t)frame_bytes)
+			break;
+		uint64_t deadline = started + 100000000ULL;
+		while (read_interrupt_counter(irq_fd) - before < 5U &&
+		       monotonic_nanoseconds() < deadline) {
+			struct timespec pause = { .tv_sec = 0, .tv_nsec = 200000L };
+			nanosleep(&pause, NULL);
+		}
+		uint64_t elapsed = monotonic_nanoseconds() - started;
+		if (read_interrupt_counter(irq_fd) - before < 5U)
+			break;
+		samples[index] = elapsed;
+		++completed;
+	}
+	uint64_t test_finished = monotonic_nanoseconds();
+	uint64_t spi_after = read_named_interrupts("78b5000.spi", 0);
+	uint64_t dma_after = read_named_interrupts("bam_dma", 0);
+	uint64_t te_after = read_named_interrupts("TE_GPIO", 0);
+	if (pwrite(fd, saved, frame_bytes, 0) == (ssize_t)frame_bytes) {
+		struct timespec restore_pause = { .tv_sec = 0, .tv_nsec = 30000000L };
+		nanosleep(&restore_pause, NULL);
+	}
+	int result = completed == frames && !interrupted ? 0 : 1;
+	if (result == 0) {
+		qsort(samples, (size_t)frames, sizeof(*samples), compare_uint64);
+		uint64_t total = 0;
+		for (int index = 0; index < frames; ++index)
+			total += samples[index];
+		int p95_index = (frames * 95 + 99) / 100 - 1;
+		printf("{\"mode\":\"synchronised\",\"frames\":%d,"
+		       "\"elapsed_ms\":%.3f,\"spi_irq_delta\":%llu,"
+		       "\"dma_irq_delta\":%llu,\"te_irq_delta\":%llu,"
+		       "\"average_ms\":%.3f,\"p50_ms\":%.3f,\"p95_ms\":%.3f,"
+		       "\"maximum_ms\":%.3f,\"safe_fps\":%.2f}\n",
+		       frames, (double)(test_finished - test_started) / 1000000.0,
+		       (unsigned long long)(spi_after - spi_before),
+		       (unsigned long long)(dma_after - dma_before),
+		       (unsigned long long)(te_after - te_before),
+		       (double)total / (double)frames / 1000000.0,
+		       (double)samples[frames / 2] / 1000000.0,
+		       (double)samples[p95_index] / 1000000.0,
+		       (double)samples[frames - 1] / 1000000.0,
+		       (double)frames * 1000000000.0 / (double)total);
+	}
+	free(samples);
+	free(saved);
+	free(frame);
+	close(irq_fd);
+	close(fd);
+	return result;
+}
+
+static int command_paced(const char *fb_path, int interval_ms, int frames, bool use_pwrite)
+{
+	struct framebuffer fb;
+	if (framebuffer_open(&fb, fb_path) != 0) {
+		fprintf(stderr, "Cannot prepare %s: %s\n", fb_path, strerror(errno));
+		framebuffer_close(&fb, 0);
+		return 1;
+	}
+	uint64_t *write_samples = calloc((size_t)frames, sizeof(*write_samples));
+	uint8_t *frame_buffer = use_pwrite ? malloc(fb.length) : NULL;
+	if (!write_samples || (use_pwrite && !frame_buffer)) {
+		free(frame_buffer);
+		free(write_samples);
+		framebuffer_close(&fb, 1);
+		return 1;
+	}
+	uint64_t spi_before = read_named_interrupts("78b5000.spi", 0);
+	uint64_t dma_before = read_named_interrupts("bam_dma", 0);
+	uint64_t te_before = read_named_interrupts("TE_GPIO", 0);
+	uint64_t started = monotonic_nanoseconds();
+	uint64_t interval = (uint64_t)interval_ms * 1000000ULL;
+	int completed = 0;
+	uint64_t maximum_write = 0;
+	int maximum_frame = -1;
+	int failed = 0;
+	for (int frame = 0; frame < frames && !interrupted; ++frame) {
+		if (frame)
+			sleep_until(started + (uint64_t)frame * interval);
+		uint16_t colour = frame & 1 ? rgb565(245, 248, 255) : rgb565(6, 12, 24);
+		uint64_t write_started = monotonic_nanoseconds();
+		uint8_t *target = use_pwrite ? frame_buffer : fb.memory;
+		for (size_t offset = 0; offset + sizeof(colour) <= fb.length;
+		     offset += sizeof(colour))
+			memcpy(target + offset, &colour, sizeof(colour));
+		if (use_pwrite && pwrite(fb.fd, frame_buffer, fb.length, 0) != (ssize_t)fb.length) {
+			failed = 1;
+			break;
+		}
+		write_samples[frame] = monotonic_nanoseconds() - write_started;
+		if (write_samples[frame] > maximum_write) {
+			maximum_write = write_samples[frame];
+			maximum_frame = frame;
+		}
+		completed++;
+	}
+	struct timespec drain = { .tv_sec = 0, .tv_nsec = 200000000L };
+	nanosleep(&drain, NULL);
+	uint64_t finished = monotonic_nanoseconds();
+	uint64_t spi_after = read_named_interrupts("78b5000.spi", 0);
+	uint64_t dma_after = read_named_interrupts("bam_dma", 0);
+	uint64_t te_after = read_named_interrupts("TE_GPIO", 0);
+	if (!interrupted && !failed && completed == frames) {
+		qsort(write_samples, (size_t)frames, sizeof(*write_samples), compare_uint64);
+		uint64_t total = 0;
+		for (int frame = 0; frame < frames; ++frame)
+			total += write_samples[frame];
+		int p95_index = (frames * 95 + 99) / 100 - 1;
+		printf("{\"mode\":\"paced\",\"method\":\"%s\",\"frames\":%d,\"interval_ms\":%d,"
+		       "\"elapsed_ms\":%.3f,\"spi_irq_delta\":%llu,"
+		       "\"dma_irq_delta\":%llu,\"te_irq_delta\":%llu,"
+		       "\"write_average_ms\":%.3f,\"write_p95_ms\":%.3f,"
+		       "\"write_maximum_ms\":%.3f,\"maximum_frame\":%d}\n",
+		       use_pwrite ? "pwrite" : "mmap", frames, interval_ms,
+		       (double)(finished - started) / 1000000.0,
+		       (unsigned long long)(spi_after - spi_before),
+		       (unsigned long long)(dma_after - dma_before),
+		       (unsigned long long)(te_after - te_before),
+		       (double)total / (double)frames / 1000000.0,
+		       (double)write_samples[p95_index] / 1000000.0,
+		       (double)write_samples[frames - 1] / 1000000.0, maximum_frame);
+	}
+	free(frame_buffer);
+	free(write_samples);
+	framebuffer_close(&fb, 1);
+	return interrupted || failed || completed != frames ? 1 : 0;
+}
+
 static const char *event_type_name(unsigned int type)
 {
 	switch (type) {
@@ -415,9 +788,13 @@ static void usage(const char *program)
 		"Usage:\n"
 		"  %s info [framebuffer] [input]\n"
 		"  %s pattern <0|90|180|270> [seconds] [framebuffer]\n"
+		"  %s benchmark [frames] [framebuffer]\n"
+		"  %s vsync [waits] [framebuffer]\n"
+		"  %s synchronised [frames] [framebuffer]\n"
+		"  %s paced <interval-ms> [frames] [mmap|pwrite] [framebuffer]\n"
 		"  %s touch [seconds] [input]\n"
 		"  %s backlight <0..max>\n",
-		program, program, program, program);
+		program, program, program, program, program, program, program, program);
 }
 
 int main(int argc, char **argv)
@@ -454,6 +831,36 @@ int main(int argc, char **argv)
 		int seconds = argc > 2 ? parse_integer(argv[2], 1, 3600, "duration") : 30;
 		const char *input = argc > 3 ? argv[3] : DEFAULT_INPUT;
 		return command_touch(input, seconds);
+	}
+	if (strcmp(argv[1], "benchmark") == 0) {
+		int frames = argc > 2 ? parse_integer(argv[2], 10, 1000, "frames") : 60;
+		const char *fb = argc > 3 ? argv[3] : DEFAULT_FB;
+		return command_benchmark(fb, frames);
+	}
+	if (strcmp(argv[1], "vsync") == 0) {
+		int waits = argc > 2 ? parse_integer(argv[2], 1, 1000, "waits") : 10;
+		const char *fb = argc > 3 ? argv[3] : DEFAULT_FB;
+		return command_vsync(fb, waits);
+	}
+	if (strcmp(argv[1], "synchronised") == 0) {
+		int frames = argc > 2 ? parse_integer(argv[2], 10, 1000, "frames") : 60;
+		const char *fb = argc > 3 ? argv[3] : DEFAULT_FB;
+		return command_synchronised(fb, frames);
+	}
+	if (strcmp(argv[1], "paced") == 0) {
+		if (argc < 3) {
+			usage(argv[0]);
+			return 2;
+		}
+		int interval = parse_integer(argv[2], 5, 1000, "interval");
+		int frames = argc > 3 ? parse_integer(argv[3], 10, 1000, "frames") : 100;
+		const char *method = argc > 4 ? argv[4] : "mmap";
+		if (strcmp(method, "mmap") != 0 && strcmp(method, "pwrite") != 0) {
+			fprintf(stderr, "Method must be mmap or pwrite.\n");
+			return 2;
+		}
+		const char *fb = argc > 5 ? argv[5] : DEFAULT_FB;
+		return command_paced(fb, interval, frames, strcmp(method, "pwrite") == 0);
 	}
 	if (strcmp(argv[1], "backlight") == 0) {
 		if (argc < 3) {

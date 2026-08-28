@@ -15,6 +15,9 @@
 #define LV_USE_STDLIB_SPRINTF LV_STDLIB_CLIB
 
 #define LV_USE_OS LV_OS_NONE
+/* Feed the measured roughly 60 Hz transfer ceiling. The display worker keeps
+ * only the latest complete frame and waits for SPI completion before the next
+ * submission, so rendering and input remain independent from panel pacing. */
 #define LV_DEF_REFR_PERIOD 16
 #define LV_DPI_DEF 130
 
@@ -31,11 +34,7 @@
 #define LV_FONT_SOURCE_HAN_SANS_SC_14_CJK 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
-#define LV_USE_LINUX_FBDEV 1
-#define LV_LINUX_FBDEV_RENDER_MODE LV_DISPLAY_RENDER_MODE_PARTIAL
-#define LV_LINUX_FBDEV_BUFFER_COUNT 2
-#define LV_LINUX_FBDEV_BUFFER_SIZE 284
-#define LV_LINUX_FBDEV_MMAP 1
+#define LV_USE_LINUX_FBDEV 0
 
 #define LV_USE_EVDEV 1
 #define LV_USE_CANVAS 1

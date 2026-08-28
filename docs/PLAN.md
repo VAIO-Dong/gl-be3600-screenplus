@@ -30,7 +30,8 @@ The screen model has six independently enabled and ordered pages:
 - C11 and LVGL 9.5.0, pinned by commit.
 - 284 × 76 logical RGB565 design space rotated onto the native 76 × 284
   framebuffer.
-- Two full-capacity partial-render buffers, a roughly 60 Hz refresh period and
+- Two full-frame render buffers, a two-slot latest-frame queue, one coherent
+  native-frame submission at a time, SPI-completion pacing near 60 Hz, and
   change-only label updates.
 - Direct finger-following page translation that redraws only the current and
   adjacent page, with a 70-180 ms ease-out settle,
