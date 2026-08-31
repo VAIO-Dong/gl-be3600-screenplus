@@ -77,6 +77,13 @@ static int uci_get(const char *key, char *buffer, unsigned int size)
 	return safe_exec_line(argv, buffer, size);
 }
 
+bool system_info_access_point_mode(void)
+{
+	char mode[16] = {0};
+	return uci_get("glconfig.general.mode", mode, sizeof(mode)) == 0 &&
+		strcmp(mode, "ap") == 0;
+}
+
 static int ubus_interface_value(const char *interface, const char *path,
 				char *buffer, unsigned int size)
 {
@@ -175,12 +182,22 @@ static void sample_interface(const char *name, const char *active_interface,
 	}
 }
 
+static int device_carrier(const char *device)
+{
+	if (!device || !device[0])
+		return -1;
+	char path[160];
+	char value[16];
+	snprintf(path, sizeof(path), "/sys/class/net/%s/carrier", device);
+	if (read_file_line(path, value, sizeof(value)) != 0)
+		return -1;
+	return strcmp(value, "1") == 0 ? 1 : 0;
+}
+
 static int ethernet_carrier(const struct uplink_info *uplink)
 {
 	char device[SCREENPLUS_TEXT_SHORT] = {0};
 	char key[96];
-	char path[160];
-	char value[16];
 	if (uplink->logical_interface[0]) {
 		snprintf(key, sizeof(key), "network.%s.device", uplink->logical_interface);
 		uci_get(key, device, sizeof(device));
@@ -189,10 +206,7 @@ static int ethernet_carrier(const struct uplink_info *uplink)
 		strncpy(device, uplink->device, sizeof(device) - 1);
 	if (!device[0])
 		return -1;
-	snprintf(path, sizeof(path), "/sys/class/net/%s/carrier", device);
-	if (read_file_line(path, value, sizeof(value)) != 0)
-		return -1;
-	return strcmp(value, "1") == 0 ? 1 : 0;
+	return device_carrier(device);
 }
 
 static void sample_ethernet(const char *active_interface, struct uplink_info *uplink)
@@ -209,6 +223,31 @@ static void sample_ethernet(const char *active_interface, struct uplink_info *up
 		strcpy(uplink->detail, "NO CABLE");
 	} else if (carrier == 1 && uplink->state != SCREENPLUS_STATE_ACTIVE &&
 		   uplink->state != SCREENPLUS_STATE_CONNECTED) {
+		uplink->state = SCREENPLUS_STATE_CONNECTING;
+		strcpy(uplink->detail, "NO INTERNET");
+	}
+}
+
+static void sample_access_point_ethernet(const char *active_interface,
+					 struct uplink_info *uplink)
+{
+	char device[SCREENPLUS_TEXT_SHORT] = {0};
+	if (uci_get("network.wan.device", device, sizeof(device)) != 0 ||
+	    !device[0]) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		return;
+	}
+	strncpy(uplink->device, device, sizeof(uplink->device) - 1);
+	int carrier = device_carrier(device);
+	if (carrier != 1) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, carrier == 0 ? "NO CABLE" : "N/A");
+		return;
+	}
+	if (active_interface[0]) {
+		uplink->state = SCREENPLUS_STATE_ACTIVE;
+		strcpy(uplink->detail, "UP");
+	} else {
 		uplink->state = SCREENPLUS_STATE_CONNECTING;
 		strcpy(uplink->detail, "NO INTERNET");
 	}
@@ -270,7 +309,8 @@ static void sample_wifi_band(const char *section, const char *device_section, st
 }
 
 static void sample_port(struct system_info_state *state, struct system_snapshot *snapshot,
-			unsigned int index, const char *device, double elapsed)
+			unsigned int index, const char *device, double elapsed,
+			bool access_point_mode)
 {
 	struct ethernet_port_info *port = &snapshot->ports[index];
 	strncpy(port->device, device, sizeof(port->device) - 1);
@@ -292,15 +332,19 @@ static void sample_port(struct system_info_state *state, struct system_snapshot 
 
 	char wan_device[SCREENPLUS_TEXT_SHORT] = {0};
 	char secondwan_device[SCREENPLUS_TEXT_SHORT] = {0};
-	uci_get("network.wan.device", wan_device, sizeof(wan_device));
-	uci_get("network.secondwan.device", secondwan_device, sizeof(secondwan_device));
-	if (strcmp(device, wan_device) == 0) {
+	if (access_point_mode) {
+		strcpy(port->role, "PORT");
+	} else {
+		uci_get("network.wan.device", wan_device, sizeof(wan_device));
+		uci_get("network.secondwan.device", secondwan_device, sizeof(secondwan_device));
+	}
+	if (!access_point_mode && strcmp(device, wan_device) == 0) {
 		strcpy(port->role, "WAN");
 		strcpy(port->logical_interface, "wan");
-	} else if (strcmp(device, secondwan_device) == 0) {
+	} else if (!access_point_mode && strcmp(device, secondwan_device) == 0) {
 		strcpy(port->role, "WAN2");
 		strcpy(port->logical_interface, "secondwan");
-	} else {
+	} else if (!access_point_mode) {
 		char command[256];
 		snprintf(command, sizeof(command),
 			"/sbin/uci -q show network 2>/dev/null | grep -E \"\\.ports=.*'%s'\" | head -n 1",
@@ -600,26 +644,33 @@ void system_info_state_initialize(struct system_info_state *state)
 int system_info_sample(struct system_info_state *state, struct system_snapshot *snapshot)
 {
 	memset(snapshot, 0, sizeof(*snapshot));
+	snapshot->access_point_mode = system_info_access_point_mode();
 	uint64_t now = monotonic_milliseconds();
 	double elapsed = state->sampled_milliseconds && now > state->sampled_milliseconds ?
 		(double)(now - state->sampled_milliseconds) / 1000.0 : 0.0;
 	char active_interface[SCREENPLUS_TEXT_SHORT];
 	find_default_interface(active_interface, sizeof(active_interface));
-	sample_ethernet(active_interface, &snapshot->ethernet);
-	sample_repeater(active_interface, &snapshot->repeater);
-	sample_tethering(active_interface, &snapshot->tethering);
-	sample_cellular(active_interface, &snapshot->cellular);
+	if (snapshot->access_point_mode) {
+		sample_access_point_ethernet(active_interface, &snapshot->ethernet);
+	} else {
+		sample_ethernet(active_interface, &snapshot->ethernet);
+		sample_repeater(active_interface, &snapshot->repeater);
+		sample_tethering(active_interface, &snapshot->tethering);
+		sample_cellular(active_interface, &snapshot->cellular);
+	}
 	sample_wifi_band("wifi2g", "wifi0", &snapshot->wifi_2g);
 	sample_wifi_band("wifi5g", "wifi1", &snapshot->wifi_5g);
 	sample_wifi_band("wlanmld2g", "wifi0", &snapshot->wifi_mlo);
-	sample_port(state, snapshot, 0, "eth0", elapsed);
-	sample_port(state, snapshot, 1, "eth1", elapsed);
+	sample_port(state, snapshot, 0, "eth0", elapsed, snapshot->access_point_mode);
+	sample_port(state, snapshot, 1, "eth1", elapsed, snapshot->access_point_mode);
 	sample_openclash(state, &snapshot->openclash, elapsed);
 	read_file_line("/proc/sys/kernel/hostname", snapshot->hostname, sizeof(snapshot->hostname));
 	read_file_line("/tmp/sysinfo/model", snapshot->model, sizeof(snapshot->model));
 	sample_firmware(snapshot->firmware, sizeof(snapshot->firmware));
 	ubus_interface_value("lan", "@[\"ipv4-address\"][0].address",
 		snapshot->lan_ipv4, sizeof(snapshot->lan_ipv4));
+	strncpy(snapshot->management_ipv4, snapshot->lan_ipv4,
+		sizeof(snapshot->management_ipv4) - 1);
 	state->sampled_milliseconds = now;
 	return 0;
 }

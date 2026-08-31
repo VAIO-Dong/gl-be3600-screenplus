@@ -119,9 +119,21 @@ static lv_obj_t *wifi_ssid_labels[2];
 static lv_obj_t *wifi_password_labels[2];
 static lv_obj_t *network_lan_label;
 static lv_obj_t *network_uplink_labels[4];
+static int network_uplink_x[4];
+static int network_uplink_width[4];
 static lv_obj_t *network_wan_title;
 static lv_obj_t *network_wan_value;
 static lv_obj_t *network_lan_title;
+static lv_obj_t *network_management_title;
+static lv_obj_t *network_management_value;
+static lv_obj_t *network_dividers[2];
+static bool network_uplink_row_enabled;
+static bool network_wan_row_enabled;
+static bool network_lan_row_enabled;
+static bool network_layout_initialized;
+static bool network_layout_access_point;
+static int network_content_x;
+static int network_content_width;
 static lv_obj_t *openclash_state_label;
 static lv_obj_t *openclash_toggle;
 static struct transfer_measurement openclash_download_measurement;
@@ -635,6 +647,8 @@ static void *metrics_worker(void *unused)
 
 static void set_page_visible(lv_obj_t *page, bool visible)
 {
+	if (!page)
+		return;
 	bool hidden = lv_obj_has_flag(page, LV_OBJ_FLAG_HIDDEN);
 	if (visible && hidden)
 		lv_obj_clear_flag(page, LV_OBJ_FLAG_HIDDEN);
@@ -1024,6 +1038,79 @@ static void layout_network_detail_rows(void)
 {
 	layout_network_detail_row(network_wan_title, network_wan_value);
 	layout_network_detail_row(network_lan_title, network_lan_label);
+	layout_network_detail_row(network_management_title, network_management_value);
+}
+
+static void layout_network_screen(bool access_point_mode)
+{
+	bool show_uplink = access_point_mode ? network_uplink_labels[0] != NULL :
+		network_uplink_row_enabled;
+	bool show_management = access_point_mode &&
+		(network_wan_row_enabled || network_lan_row_enabled);
+	bool show_wan = !access_point_mode && network_wan_row_enabled;
+	bool show_lan = !access_point_mode && network_lan_row_enabled;
+	unsigned int row_count = (show_uplink ? 1U : 0U) +
+		(show_management ? 1U : 0U) + (show_wan ? 1U : 0U) +
+		(show_lan ? 1U : 0U);
+	unsigned int row = 0;
+	if (show_uplink) {
+		int y = responsive_row_y(row++, row_count);
+		for (unsigned int index = 0; index < 4; ++index) {
+			if (!network_uplink_labels[index])
+				continue;
+			bool visible = !access_point_mode || index == 0;
+			set_page_visible(network_uplink_labels[index], visible);
+			if (!visible)
+				continue;
+			lv_obj_set_y(network_uplink_labels[index], y);
+			if (access_point_mode) {
+				int width = network_text_width("ETHERNET");
+				set_label_text_if_changed(network_uplink_labels[index], "ETHERNET");
+				lv_obj_set_x(network_uplink_labels[index], (284 - width) / 2);
+				lv_obj_set_width(network_uplink_labels[index], width);
+			} else {
+				lv_obj_set_x(network_uplink_labels[index], network_uplink_x[index]);
+				lv_obj_set_width(network_uplink_labels[index],
+					network_uplink_width[index]);
+			}
+		}
+	} else {
+		for (unsigned int index = 0; index < 4; ++index)
+			set_page_visible(network_uplink_labels[index], false);
+	}
+	set_page_visible(network_wan_title, show_wan);
+	set_page_visible(network_wan_value, show_wan);
+	if (show_wan) {
+		int y = responsive_row_y(row++, row_count);
+		lv_obj_set_y(network_wan_title, y);
+		lv_obj_set_y(network_wan_value, y);
+	}
+	set_page_visible(network_lan_title, show_lan);
+	set_page_visible(network_lan_label, show_lan);
+	if (show_lan) {
+		int y = responsive_row_y(row++, row_count);
+		lv_obj_set_y(network_lan_title, y);
+		lv_obj_set_y(network_lan_label, y);
+	}
+	set_page_visible(network_management_title, show_management);
+	set_page_visible(network_management_value, show_management);
+	if (show_management) {
+		int y = responsive_row_y(row, row_count);
+		lv_obj_set_y(network_management_title, y);
+		lv_obj_set_y(network_management_value, y);
+	}
+	for (unsigned int index = 0; index < 2; ++index) {
+		bool visible = index + 1U < row_count;
+		set_page_visible(network_dividers[index], visible);
+		if (visible) {
+			int y = (int)(76U * (index + 1U) / row_count) - 1;
+			lv_obj_set_pos(network_dividers[index], network_content_x, y);
+			lv_obj_set_width(network_dividers[index], network_content_width);
+		}
+	}
+	layout_network_detail_rows();
+	network_layout_access_point = access_point_mode;
+	network_layout_initialized = true;
 }
 
 static lv_obj_t *build_network_screen(lv_obj_t *parent)
@@ -1076,13 +1163,12 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 	if (content_width > 276)
 		content_width = 276;
 	int content_x = (284 - content_width) / 2;
-	unsigned int row_count = (visible ? 1U : 0U) + show_wan + show_lan;
-	unsigned int row = 0;
-	for (unsigned int index = 1; index < row_count; ++index) {
-		int y = (int)(76U * index / row_count) - 1;
-		create_divider(screen, content_x, y, content_width, 2);
-	}
-	int uplink_y = visible ? responsive_row_y(row++, row_count) : 0;
+	network_uplink_row_enabled = visible > 0;
+	network_wan_row_enabled = show_wan;
+	network_lan_row_enabled = show_lan;
+	network_content_x = content_x;
+	network_content_width = content_width;
+	int uplink_y = 0;
 	int group_width = natural_group_width;
 	int x = content_x + (content_width - group_width) / 2;
 	int gap_space = visible > 1U ? 12 : 0;
@@ -1097,6 +1183,8 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 		int width = uplink_widths[slot];
 		network_uplink_labels[index] = create_label(screen, titles[index], x, uplink_y,
 			ui_label_font(), app_config.secondary_colour);
+		network_uplink_x[index] = x;
+		network_uplink_width[index] = width;
 		lv_obj_set_width(network_uplink_labels[index], width);
 		lv_obj_set_style_text_align(network_uplink_labels[index],
 			LV_TEXT_ALIGN_CENTER, 0);
@@ -1106,32 +1194,40 @@ static lv_obj_t *build_network_screen(lv_obj_t *parent)
 			x += gap_space + ((int)slot < gap_remainder ? 1 : 0);
 	}
 	if (show_wan) {
-		int y = responsive_row_y(row++, row_count);
-		network_wan_title = create_label(screen, "WAN", content_x, y, ui_label_font(),
+		network_wan_title = create_label(screen, "WAN", content_x, 0, ui_label_font(),
 			app_config.accent_colour);
 		lv_obj_set_width(network_wan_title, detail_title_width);
 		lv_obj_set_style_text_align(network_wan_title, LV_TEXT_ALIGN_CENTER, 0);
 		int value_x = content_x + detail_title_width + 12;
-		network_wan_value = create_label(screen, "--", value_x, y,
+		network_wan_value = create_label(screen, "--", value_x, 0,
 			ui_label_font(), app_config.primary_colour);
 		lv_obj_set_width(network_wan_value,
 			content_x + content_width - value_x);
 		lv_label_set_long_mode(network_wan_value, LV_LABEL_LONG_DOT);
 	}
 	if (show_lan) {
-		int y = responsive_row_y(row, row_count);
-		network_lan_title = create_label(screen, "LAN", content_x, y, ui_label_font(),
+		network_lan_title = create_label(screen, "LAN", content_x, 0, ui_label_font(),
 			app_config.accent_colour);
 		lv_obj_set_width(network_lan_title, detail_title_width);
 		lv_obj_set_style_text_align(network_lan_title, LV_TEXT_ALIGN_CENTER, 0);
 		int value_x = content_x + detail_title_width + 12;
-		network_lan_label = create_label(screen, "--", value_x, y,
+		network_lan_label = create_label(screen, "--", value_x, 0,
 			ui_label_font(), app_config.primary_colour);
 		lv_obj_set_width(network_lan_label,
 			content_x + content_width - value_x);
 		lv_label_set_long_mode(network_lan_label, LV_LABEL_LONG_DOT);
 	}
-	layout_network_detail_rows();
+	if (show_wan || show_lan) {
+		network_management_title = create_label(screen, "IP", content_x, 0,
+			ui_label_font(), app_config.accent_colour);
+		network_management_value = create_label(screen, "--", content_x, 0,
+			ui_label_font(), app_config.primary_colour);
+		lv_label_set_long_mode(network_management_value, LV_LABEL_LONG_DOT);
+	}
+	for (unsigned int index = 0; index < 2; ++index)
+		network_dividers[index] = create_divider(screen, content_x, 0,
+			content_width, 2);
+	layout_network_screen(system_info_access_point_mode());
 	lv_obj_add_event_cb(screen, page_drag_event, LV_EVENT_ALL, NULL);
 	return screen;
 }
@@ -1758,9 +1854,15 @@ static void apply_system_snapshot(lv_timer_t *timer)
 	applied_snapshot_generation = generation;
 
 	char text[160];
+	if (!network_layout_initialized ||
+	    network_layout_access_point != snapshot.access_point_mode)
+		layout_network_screen(snapshot.access_point_mode);
 	if (network_lan_label)
 		set_label_text_if_changed(network_lan_label,
 			snapshot.lan_ipv4[0] ? snapshot.lan_ipv4 : "NO IP");
+	if (network_management_value)
+		set_label_text_if_changed(network_management_value,
+			snapshot.management_ipv4[0] ? snapshot.management_ipv4 : "NO IP");
 
 	const struct uplink_info *uplinks[] = {
 		&snapshot.ethernet, &snapshot.repeater,
@@ -1772,7 +1874,8 @@ static void apply_system_snapshot(lv_timer_t *timer)
 	for (unsigned int index = 0; index < 4; ++index) {
 		const struct uplink_info *uplink = uplinks[index];
 		if (network_uplink_labels[index]) {
-			set_label_text_if_changed(network_uplink_labels[index], titles[index]);
+			set_label_text_if_changed(network_uplink_labels[index],
+				snapshot.access_point_mode && index == 0 ? "ETHERNET" : titles[index]);
 			lv_obj_set_style_text_color(network_uplink_labels[index],
 				colour(network_state_colour(uplink->state)), 0);
 		}
@@ -2220,7 +2323,8 @@ int main(int argc, char **argv)
 		system_info_sample(&state, &snapshot);
 		sleep_milliseconds(1000);
 		system_info_sample(&state, &snapshot);
-		printf("{\"ethernet\":\"%s\",\"repeater\":\"%s\","
+		printf("{\"access_point_mode\":%s,\"management_ipv4\":\"%s\","
+		       "\"ethernet\":\"%s\",\"repeater\":\"%s\","
 		       "\"tethering\":\"%s\",\"cellular\":\"%s\","
 		       "\"ethernet_ipv4\":\"%s\",\"ethernet_gateway\":\"%s\","
 		       "\"ethernet_dns\":\"%s\",\"repeater_ipv4\":\"%s\","
@@ -2240,6 +2344,8 @@ int main(int argc, char **argv)
 		       "\"openclash_memory_bytes\":%llu,"
 		       "\"openclash_download_total\":%llu,"
 		       "\"openclash_upload_total\":%llu}\n",
+		       snapshot.access_point_mode ? "true" : "false",
+		       snapshot.management_ipv4,
 		       system_info_state_text(snapshot.ethernet.state),
 		       system_info_state_text(snapshot.repeater.state),
 		       system_info_state_text(snapshot.tethering.state),

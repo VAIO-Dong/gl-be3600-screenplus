@@ -65,6 +65,7 @@ struct openclash_info {
 };
 
 struct system_snapshot {
+	bool access_point_mode;
 	struct uplink_info ethernet;
 	struct uplink_info repeater;
 	struct uplink_info tethering;
@@ -78,6 +79,7 @@ struct system_snapshot {
 	char model[SCREENPLUS_TEXT_MEDIUM];
 	char firmware[SCREENPLUS_TEXT_MEDIUM];
 	char lan_ipv4[SCREENPLUS_TEXT_SHORT];
+	char management_ipv4[SCREENPLUS_TEXT_SHORT];
 };
 
 struct system_info_state {
@@ -91,6 +93,7 @@ struct system_info_state {
 };
 
 void system_info_state_initialize(struct system_info_state *state);
+bool system_info_access_point_mode(void);
 int system_info_sample(struct system_info_state *state, struct system_snapshot *snapshot);
 const char *system_info_state_text(enum screenplus_state state);
 

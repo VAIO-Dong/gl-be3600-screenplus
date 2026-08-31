@@ -184,6 +184,104 @@ static int find_default_interface(char *interface, unsigned int size)
 	return found ? 0 : -1;
 }
 
+static int next_uci_token(const char **cursor, char *buffer, unsigned int size)
+{
+	if (!cursor || !*cursor || !buffer || size < 2)
+		return -1;
+	const char *text = *cursor;
+	while (*text == ' ' || *text == '\t')
+		++text;
+	if (!*text || *text == '#')
+		return -1;
+	char quote = 0;
+	if (*text == '\'' || *text == '"')
+		quote = *text++;
+	unsigned int length = 0;
+	while (*text && ((quote && *text != quote) ||
+	       (!quote && *text != ' ' && *text != '\t' &&
+		*text != '\r' && *text != '\n' && *text != '#'))) {
+		if (length + 1U < size)
+			buffer[length++] = *text;
+		++text;
+	}
+	if (quote && *text != quote)
+		return -1;
+	if (quote)
+		++text;
+	buffer[length] = '\0';
+	*cursor = text;
+	return length ? 0 : -1;
+}
+
+static int read_uci_section_option(const char *path, const char *section,
+				   const char *option, char *buffer,
+				   unsigned int size)
+{
+	FILE *file = fopen(path, "r");
+	if (!file)
+		return -1;
+	bool selected = false;
+	char line[512];
+	while (fgets(line, sizeof(line), file)) {
+		const char *cursor = line;
+		char directive[32] = {0};
+		if (next_uci_token(&cursor, directive, sizeof(directive)) != 0)
+			continue;
+		if (strcmp(directive, "config") == 0) {
+			char type[64] = {0};
+			char name[64] = {0};
+			selected = next_uci_token(&cursor, type, sizeof(type)) == 0 &&
+				next_uci_token(&cursor, name, sizeof(name)) == 0 &&
+				strcmp(name, section) == 0;
+			continue;
+		}
+		if (!selected || strcmp(directive, "option") != 0)
+			continue;
+		char key[64] = {0};
+		char value[SCREENPLUS_INTERFACE_NAME_SIZE] = {0};
+		if (next_uci_token(&cursor, key, sizeof(key)) != 0 ||
+		    strcmp(key, option) != 0 ||
+		    next_uci_token(&cursor, value, sizeof(value)) != 0)
+			continue;
+		strncpy(buffer, value, size - 1);
+		buffer[size - 1] = '\0';
+		fclose(file);
+		return 0;
+	}
+	fclose(file);
+	return -1;
+}
+
+static bool safe_interface_name(const char *name)
+{
+	return name && *name &&
+		strspn(name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") ==
+		strlen(name);
+}
+
+static int find_bridge_uplink(const char *bridge, char *interface,
+			      unsigned int size)
+{
+	static const char *const sections[] = { "wan", "secondwan" };
+	for (unsigned int index = 0;
+	     index < sizeof(sections) / sizeof(sections[0]); ++index) {
+		char candidate[SCREENPLUS_INTERFACE_NAME_SIZE] = {0};
+		if (read_uci_section_option("/etc/config/network", sections[index],
+		    "device", candidate, sizeof(candidate)) != 0 ||
+		    !safe_interface_name(candidate))
+			continue;
+		char path[256];
+		snprintf(path, sizeof(path), "/sys/class/net/%s/brif/%s",
+			bridge, candidate);
+		if (access(path, F_OK) != 0)
+			continue;
+		strncpy(interface, candidate, size - 1);
+		interface[size - 1] = '\0';
+		return 0;
+	}
+	return -1;
+}
+
 static int read_counter_file(const char *path, uint64_t *value)
 {
 	FILE *file = fopen(path, "r");
@@ -205,6 +303,13 @@ static int read_network_bytes(char *interface, unsigned int size,
 		strncpy(interface, "eth0", size - 1);
 	interface[size - 1] = '\0';
 	char path[256];
+	snprintf(path, sizeof(path), "/sys/class/net/%s/brif", interface);
+	if (access(path, F_OK) == 0) {
+		char bridge[SCREENPLUS_INTERFACE_NAME_SIZE];
+		strncpy(bridge, interface, sizeof(bridge) - 1);
+		bridge[sizeof(bridge) - 1] = '\0';
+		find_bridge_uplink(bridge, interface, size);
+	}
 	snprintf(path, sizeof(path), "/sys/class/net/%s/statistics/rx_bytes", interface);
 	if (read_counter_file(path, receive) != 0)
 		return -1;

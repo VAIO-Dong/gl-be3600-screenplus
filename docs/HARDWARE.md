@@ -15,6 +15,12 @@
 | Fan tachometer | `/sys/class/hwmon/*/fan1_input` | `pwmfan`, about 1269 RPM observed |
 | NSS data plane | `qca_nss_dp` netdevice statistics | hardware-accelerated `eth0` counters |
 
+In GL access point mode, the default route uses `br-lan`, while accelerated
+forwarded traffic continues to advance the physical bridge-port counters. The
+retained `network.wan.device` identifies the upstream member on the confirmed
+firmware (`eth0`); verify its membership before using it rather than treating
+the bridge's host counters as total traffic.
+
 The LCD is mounted as a landscape touchscreen while the kernel framebuffer is
 reported in portrait scan order. Visual hardware testing confirmed that the
 normal logical landscape orientation is the 90-degree mapping:

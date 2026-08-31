@@ -260,6 +260,39 @@ enabled changes from `1` to `0` should show the wrapper plus `gl_screen`, and a
 change back to `1` should leave only `/usr/sbin/screenplus`. This stable entry
 point is what lets normal configuration changes retain the current page.
 
+## Access point mode
+
+GL firmware reports access point mode through `glconfig.general.mode=ap`. In
+this mode the default route is attached to `br-lan`, but the bridge interface
+counters cover traffic terminated by the router itself and do not represent
+NSS/PPE-accelerated forwarding between bridge ports. Do not use the default
+route interface counter as the AP traffic total.
+
+The factory configuration retains the former WAN device as a member of the
+LAN bridge. ScreenPlus uses that configured bridge member as the upstream
+traffic source, after verifying that it is actually present under the bridge's
+`brif` directory. Confirm it against the gateway's bridge FDB entry and check
+that its hardware netdevice counters advance during client traffic:
+
+~~~sh
+uci -q get glconfig.general.mode
+ip -4 route show default
+uci -q get network.wan.device
+ls /sys/class/net/br-lan/brif
+/usr/sbin/screenplus --metrics-once
+~~~
+
+In AP mode, `network_interface` must name the verified physical bridge member,
+not `br-lan`. The Network page must hide repeater, tethering and cellular,
+centre one Ethernet status label, and replace the WAN and LAN detail rows with
+one management-IP row obtained from the active LAN interface. Ethernet uses
+the configured upstream port's carrier plus the presence of a default route:
+secondary text colour for no cable, yellow for a link without an upstream
+route, and green when the route is available. Both Ethernet ports are plain
+ports in diagnostics and must not be labelled WAN or LAN. Switching back to
+router mode must restore the normal four uplink labels and separate WAN/LAN
+rows without changing the ScreenPlus page configuration.
+
 ## Reset-button overlay
 
 `/usr/libexec/screenplus-reset-hook` adds an idempotent, reversible call at the

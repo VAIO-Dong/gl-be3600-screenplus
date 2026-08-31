@@ -51,7 +51,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 - USB Tethering
 - Cellular
 
-与当前所使用的WAN侧连接方式与LAN的IP地址
+路由模式下同时显示当前使用的 WAN 连接方式和 LAN IP。AP 模式会自动使用更适合桥接网络的页面布局，具体行为见下方说明。
 
 ### OpenClash
 
@@ -60,6 +60,14 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 </p>
 
 显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash。
+
+## AP 模式支持
+
+ScreenPlus 会自动识别 GL.iNet 固件的 AP 模式，不需要另外修改 ScreenPlus 配置：
+
+- 实时速率会统计 AP 与上级网络之间的流量。
+- 网络连接页只显示 Ethernet 状态和设备的管理 IP。
+- 切换回路由模式后，会自动恢复四种上网方式以及 WAN/LAN 信息。
 
 ## LuCI 配置
 
