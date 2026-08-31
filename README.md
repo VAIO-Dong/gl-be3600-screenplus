@@ -61,6 +61,14 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 
 显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash。
 
+## 快捷菜单
+
+在任意页面向下滑动可以打开快捷菜单，用来重启设备或立即关闭屏幕。重启设备需要在确认页面向右滑动，避免误触；关闭屏幕后，下一次触摸只负责唤醒屏幕。
+
+## Reset 按键提示
+
+按住设备的 Reset 键时，屏幕会显示当前松手后将执行的操作和剩余时间。松开后会立即显示对应结果，官方按键行为和时间阈值保持不变。
+
 ## AP 模式支持
 
 ScreenPlus 会自动识别 GL.iNet 固件的 AP 模式，不需要另外修改 ScreenPlus 配置：
@@ -92,7 +100,7 @@ ScreenPlus 会自动识别 GL.iNet 固件的 AP 模式，不需要另外修改 S
 
 安装时 ScreenPlus 会停止并禁用官方 `gl_screen`，但不会删除它。
 
-项目会把 ScreenPlus 加入 GL.iNet 原生 Toggle 设置。将机身侧面的拨动开关分配给 ScreenPlus 后，就可以在官方屏幕和 ScreenPlus 之间一键切换。卸载 ScreenPlus 时会自动恢复并启动官方屏幕服务。
+项目会把 ScreenPlus 加入原生 Toggle 设置，在路由模式和 AP 模式下都可以选择。将机身侧面的拨动开关分配给 ScreenPlus 后，就可以在官方屏幕和 ScreenPlus 之间一键切换。卸载 ScreenPlus 时会自动恢复并启动官方屏幕服务。
 
 ## 安装
 

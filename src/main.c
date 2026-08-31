@@ -37,6 +37,9 @@ LV_FONT_DECLARE(screenplus_reset_16);
 #define RESET_STAGE_COUNT 3U
 #define TOUCH_READ_PERIOD_MS 10U
 #define PAGE_DRAG_START_PX 6
+#define QUICK_MENU_SWIPE_PX 10
+#define RESTART_SLIDE_START_PX 56
+#define RESTART_SLIDE_CONFIRM_PX 190
 
 struct options {
 	const char *framebuffer;
@@ -67,6 +70,7 @@ static lv_obj_t *wifi_qr_code;
 static lv_obj_t *openclash_screen;
 static lv_obj_t *reset_screen;
 static lv_obj_t *reset_stage_pages[RESET_STAGE_COUNT];
+static lv_obj_t *reset_stage_status_labels[RESET_STAGE_COUNT];
 static lv_obj_t *reset_stage_main_labels[RESET_STAGE_COUNT];
 static lv_obj_t *reset_stage_detail_labels[RESET_STAGE_COUNT];
 static lv_obj_t *reset_stage_progress[RESET_STAGE_COUNT];
@@ -74,6 +78,23 @@ static bool reset_overlay_active;
 static unsigned int reset_visible_stage = RESET_STAGE_COUNT;
 static unsigned int reset_last_remaining = UINT32_MAX;
 static bool reset_cancelled;
+static lv_obj_t *quick_menu_panel;
+static lv_obj_t *quick_menu_actions;
+static lv_obj_t *restart_confirmation;
+static lv_obj_t *restart_slider;
+static lv_obj_t *restart_slider_fill;
+static lv_obj_t *restart_slider_label;
+static lv_obj_t *restart_confirmation_title;
+static lv_obj_t *restart_cancel_button;
+static bool quick_menu_visible;
+static bool restart_confirmation_visible;
+static bool restart_slide_active;
+static bool manual_screen_off;
+static int32_t restart_slide_start_x;
+static bool global_touch_pressed;
+static bool global_touch_consumed;
+static lv_point_t global_touch_start;
+static lv_indev_t *touch_input;
 static lv_obj_t *screens[SCREENPLUS_PAGE_COUNT];
 static lv_obj_t *screens_by_page[SCREENPLUS_PAGE_COUNT];
 static unsigned int screen_count;
@@ -186,6 +207,8 @@ static int openclash_toggle_command_done;
 static uint32_t openclash_toggle_deadline;
 static unsigned int openclash_toggle_request_id;
 static bool openclash_toggle_syncing;
+static pthread_mutex_t device_action_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool reboot_requested;
 
 static void on_signal(int signal_number)
 {
@@ -785,7 +808,8 @@ static void page_drag_event(lv_event_t *event)
 static void auto_carousel(lv_timer_t *timer)
 {
 	(void)timer;
-	if (!app_config.auto_carousel || screen_count < 2 || page_animation_running || drag_tracking)
+	if (!app_config.auto_carousel || screen_count < 2 || page_animation_running ||
+	    drag_tracking || quick_menu_visible)
 		return;
 	drag_offset = 0;
 	animate_page_settle(-284, 1);
@@ -821,7 +845,9 @@ static void manage_idle_state(lv_timer_t *timer)
 		should_be_on = app_config.always_on ||
 			lv_display_get_inactive_time(main_display) < app_config.idle_timeout_seconds * 1000U;
 	}
-	if (reset_overlay_active)
+	if (manual_screen_off)
+		should_be_on = false;
+	if (reset_overlay_active || quick_menu_visible)
 		should_be_on = true;
 	set_backlight(should_be_on);
 	for (unsigned int band = 0; band < 2; ++band) {
@@ -1422,22 +1448,24 @@ static lv_obj_t *create_reset_progress(lv_obj_t *parent, unsigned int fill_colou
 static lv_obj_t *create_reset_stage_page(lv_obj_t *parent, unsigned int stage)
 {
 	static const char *const english_stage_names[] = {
-		"NETWORK", "FACTORY", "CANCEL"
+		"CANCEL", "NETWORK", "FACTORY"
 	};
 	static const char *const chinese_stage_names[] = {
-		"网络", "出厂", "取消"
+		"取消", "网络", "出厂"
 	};
 	unsigned int stage_colours[] = {
-		app_config.accent_colour, app_config.warning_colour, app_config.error_colour
+		app_config.error_colour, app_config.accent_colour, app_config.warning_colour
 	};
 	lv_obj_t *page = lv_obj_create(parent);
 	style_screen(page);
-	create_label(page, "RESET", 8, 3, reset_ui_font(), app_config.accent_colour);
-	lv_obj_t *stage_name = create_label(page,
+	create_label(page, translated("按键重置", "RESET"), 8, 3,
+		reset_ui_font(), app_config.accent_colour);
+	reset_stage_status_labels[stage] = create_label(page,
 		app_config.chinese ? chinese_stage_names[stage] : english_stage_names[stage],
 		146, 3, reset_ui_font(), stage_colours[stage]);
-	lv_obj_set_width(stage_name, 130);
-	lv_obj_set_style_text_align(stage_name, LV_TEXT_ALIGN_RIGHT, 0);
+	lv_obj_set_width(reset_stage_status_labels[stage], 130);
+	lv_obj_set_style_text_align(reset_stage_status_labels[stage],
+		LV_TEXT_ALIGN_RIGHT, 0);
 	create_divider(page, 8, 25, 268, 2);
 	reset_stage_main_labels[stage] = create_label(page, "", 8, 28,
 		reset_ui_font(), app_config.primary_colour);
@@ -1459,6 +1487,367 @@ static lv_obj_t *build_reset_screen(void)
 	for (unsigned int stage = 0; stage < RESET_STAGE_COUNT; ++stage)
 		reset_stage_pages[stage] = create_reset_stage_page(screen, stage);
 	return screen;
+}
+
+static void style_overlay_container(lv_obj_t *object)
+{
+	lv_obj_set_pos(object, 0, 0);
+	lv_obj_set_size(object, 284, 76);
+	lv_obj_set_style_radius(object, 0, 0);
+	lv_obj_set_style_border_width(object, 0, 0);
+	lv_obj_set_style_pad_all(object, 0, 0);
+	lv_obj_set_style_bg_opa(object, LV_OPA_TRANSP, 0);
+	lv_obj_clear_flag(object, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static lv_obj_t *create_quick_menu_button(lv_obj_t *parent, const char *icon,
+					   const char *text, int x,
+					   unsigned int text_colour)
+{
+	lv_obj_t *button = lv_obj_create(parent);
+	lv_obj_set_pos(button, x, 0);
+	lv_obj_set_size(button, 142, 76);
+	lv_obj_set_style_radius(button, 0, 0);
+	lv_obj_set_style_border_width(button, 0, 0);
+	lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+	lv_obj_set_style_bg_color(button, colour(text_colour), LV_STATE_PRESSED);
+	lv_obj_set_style_bg_opa(button, LV_OPA_20, LV_STATE_PRESSED);
+	lv_obj_set_style_pad_all(button, 0, 0);
+	lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_t *icon_label = create_label(button, icon, 0, 0,
+		&lv_font_montserrat_28, text_colour);
+	lv_obj_align(icon_label, LV_ALIGN_TOP_MID, 0, 13);
+	lv_obj_clear_flag(icon_label, LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_t *label = create_label(button, text, 0, 0,
+		small_ui_font(), text_colour);
+	/* Keep 11 clear pixels between the icon and the 14 px label: about
+	 * 0.8 of one text line on this display. */
+	lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 52);
+	lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+	return button;
+}
+
+static void reset_restart_slider(void)
+{
+	restart_slide_active = false;
+	if (restart_slider_fill)
+		lv_obj_set_width(restart_slider_fill, 28);
+	if (restart_slider_label)
+		set_label_text_if_changed(restart_slider_label,
+			translated("向右滑动重启", "SLIDE RIGHT TO RESTART"));
+}
+
+static void show_quick_menu_actions(void)
+{
+	restart_confirmation_visible = false;
+	set_page_visible(quick_menu_actions, true);
+	set_page_visible(restart_confirmation, false);
+	set_page_visible(restart_cancel_button, true);
+	if (restart_slider)
+		lv_obj_add_flag(restart_slider, LV_OBJ_FLAG_CLICKABLE);
+	if (restart_confirmation_title)
+		set_label_text_if_changed(restart_confirmation_title,
+			translated("确认重启", "CONFIRM RESTART"));
+	reset_restart_slider();
+}
+
+static void show_restart_confirmation(void)
+{
+	restart_confirmation_visible = true;
+	set_page_visible(quick_menu_actions, false);
+	set_page_visible(restart_confirmation, true);
+	set_page_visible(restart_cancel_button, true);
+	if (restart_slider)
+		lv_obj_add_flag(restart_slider, LV_OBJ_FLAG_CLICKABLE);
+	if (restart_confirmation_title)
+		set_label_text_if_changed(restart_confirmation_title,
+			translated("确认重启", "CONFIRM RESTART"));
+	reset_restart_slider();
+}
+
+static void quick_menu_animation_exec(void *object, int32_t value)
+{
+	lv_obj_set_y((lv_obj_t *)object, value);
+}
+
+static void quick_menu_close_complete(lv_anim_t *animation)
+{
+	(void)animation;
+	if (!quick_menu_visible && quick_menu_panel)
+		lv_obj_add_flag(quick_menu_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void animate_quick_menu(int32_t start, int32_t end, bool opening)
+{
+	if (!quick_menu_panel)
+		return;
+	lv_anim_delete(quick_menu_panel, NULL);
+	if (opening) {
+		lv_obj_clear_flag(quick_menu_panel, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_move_foreground(quick_menu_panel);
+	}
+	lv_anim_t animation;
+	lv_anim_init(&animation);
+	lv_anim_set_var(&animation, quick_menu_panel);
+	lv_anim_set_exec_cb(&animation, quick_menu_animation_exec);
+	lv_anim_set_values(&animation, start, end);
+	lv_anim_set_duration(&animation, 150);
+	lv_anim_set_path_cb(&animation, lv_anim_path_ease_out);
+	if (!opening)
+		lv_anim_set_completed_cb(&animation, quick_menu_close_complete);
+	lv_anim_start(&animation);
+}
+
+static void cancel_dashboard_interaction(void)
+{
+	if (dashboard_screen)
+		lv_anim_delete(dashboard_screen, NULL);
+	page_animation_running = false;
+	drag_tracking = false;
+	drag_moved = false;
+	drag_offset = 0;
+	pending_page_delta = 0;
+	wifi_touch_active = false;
+	password_long_press_handled = false;
+	if (screen_count)
+		place_pages(0);
+}
+
+static void open_quick_menu(void)
+{
+	if (!quick_menu_panel || reset_overlay_active || quick_menu_visible)
+		return;
+	cancel_dashboard_interaction();
+	show_quick_menu_actions();
+	quick_menu_visible = true;
+	lv_obj_set_y(quick_menu_panel, -76);
+	animate_quick_menu(-76, 0, true);
+	if (main_display)
+		lv_display_trigger_activity(main_display);
+}
+
+static void close_quick_menu_animated(void)
+{
+	if (!quick_menu_panel || !quick_menu_visible)
+		return;
+	quick_menu_visible = false;
+	restart_confirmation_visible = false;
+	restart_slide_active = false;
+	animate_quick_menu(lv_obj_get_y(quick_menu_panel), -76, false);
+}
+
+static void close_quick_menu_immediately(void)
+{
+	if (!quick_menu_panel)
+		return;
+	lv_anim_delete(quick_menu_panel, NULL);
+	quick_menu_visible = false;
+	restart_confirmation_visible = false;
+	restart_slide_active = false;
+	lv_obj_set_y(quick_menu_panel, -76);
+	lv_obj_add_flag(quick_menu_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+enum quick_menu_action {
+	QUICK_MENU_RESTART,
+	QUICK_MENU_SCREEN_OFF
+};
+
+static void quick_menu_action_event(lv_event_t *event)
+{
+	if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+		return;
+	enum quick_menu_action action =
+		(enum quick_menu_action)(uintptr_t)lv_event_get_user_data(event);
+	if (action == QUICK_MENU_RESTART) {
+		show_restart_confirmation();
+		return;
+	}
+	close_quick_menu_immediately();
+	manual_screen_off = true;
+	set_backlight(false);
+}
+
+static void restart_cancel_event(lv_event_t *event)
+{
+	if (lv_event_get_code(event) == LV_EVENT_CLICKED)
+		show_quick_menu_actions();
+}
+
+static void queue_reboot(void)
+{
+	pthread_mutex_lock(&device_action_mutex);
+	reboot_requested = true;
+	pthread_mutex_unlock(&device_action_mutex);
+}
+
+static void restart_slider_event(lv_event_t *event)
+{
+	lv_event_code_t code = lv_event_get_code(event);
+	lv_indev_t *input = lv_indev_active();
+	if (!input || !restart_confirmation_visible)
+		return;
+	lv_point_t point;
+	lv_indev_get_point(input, &point);
+	if (code == LV_EVENT_PRESSED) {
+		lv_area_t area;
+		lv_obj_get_coords(restart_slider, &area);
+		if (point.x - area.x1 > RESTART_SLIDE_START_PX)
+			return;
+		restart_slide_active = true;
+		restart_slide_start_x = point.x;
+		return;
+	}
+	if (code == LV_EVENT_PRESSING && restart_slide_active) {
+		int32_t distance = point.x - restart_slide_start_x;
+		if (distance < 0)
+			distance = 0;
+		if (distance > 236)
+			distance = 236;
+		lv_obj_set_width(restart_slider_fill, 28 + distance);
+		lv_indev_reset_long_press(input);
+		return;
+	}
+	if (code != LV_EVENT_RELEASED && code != LV_EVENT_PRESS_LOST)
+		return;
+	int32_t distance = point.x - restart_slide_start_x;
+	bool confirmed = restart_slide_active &&
+		code == LV_EVENT_RELEASED && distance >= RESTART_SLIDE_CONFIRM_PX;
+	restart_slide_active = false;
+	if (!confirmed) {
+		reset_restart_slider();
+		return;
+	}
+	lv_obj_set_width(restart_slider_fill, 264);
+	set_label_text_if_changed(restart_confirmation_title,
+		translated("正在重启", "RESTARTING"));
+	set_label_text_if_changed(restart_slider_label,
+		translated("请稍候", "PLEASE WAIT"));
+	set_page_visible(restart_cancel_button, false);
+	lv_obj_clear_flag(restart_slider, LV_OBJ_FLAG_CLICKABLE);
+	queue_reboot();
+}
+
+static lv_obj_t *build_quick_menu(void)
+{
+	lv_obj_t *panel = lv_obj_create(lv_layer_top());
+	style_screen(panel);
+	lv_obj_set_y(panel, -76);
+	lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN);
+
+	quick_menu_actions = lv_obj_create(panel);
+	style_overlay_container(quick_menu_actions);
+	lv_obj_t *restart_button = create_quick_menu_button(quick_menu_actions,
+		LV_SYMBOL_REFRESH, translated("重启", "RESTART"), 0,
+		app_config.error_colour);
+	lv_obj_t *screen_off_button = create_quick_menu_button(quick_menu_actions,
+		LV_SYMBOL_POWER, translated("关闭屏幕", "SCREEN OFF"), 142,
+		app_config.primary_colour);
+	create_divider(quick_menu_actions, 141, 10, 2, 56);
+	lv_obj_add_event_cb(restart_button, quick_menu_action_event,
+		LV_EVENT_CLICKED, (void *)(uintptr_t)QUICK_MENU_RESTART);
+	lv_obj_add_event_cb(screen_off_button, quick_menu_action_event,
+		LV_EVENT_CLICKED, (void *)(uintptr_t)QUICK_MENU_SCREEN_OFF);
+
+	restart_confirmation = lv_obj_create(panel);
+	style_overlay_container(restart_confirmation);
+	restart_confirmation_title = create_label(restart_confirmation,
+		translated("确认重启", "CONFIRM RESTART"), 8, 3,
+		small_ui_font(), app_config.primary_colour);
+	restart_cancel_button = lv_obj_create(restart_confirmation);
+	lv_obj_set_pos(restart_cancel_button, 226, 1);
+	lv_obj_set_size(restart_cancel_button, 50, 27);
+	lv_obj_set_style_radius(restart_cancel_button, 0, 0);
+	lv_obj_set_style_border_width(restart_cancel_button, 0, 0);
+	lv_obj_set_style_bg_opa(restart_cancel_button, LV_OPA_TRANSP, 0);
+	lv_obj_set_style_pad_all(restart_cancel_button, 0, 0);
+	lv_obj_clear_flag(restart_cancel_button, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_t *cancel_label = create_label(restart_cancel_button,
+		translated("取消", "CANCEL"), 0, 0,
+		small_ui_font(), app_config.secondary_colour);
+	lv_obj_center(cancel_label);
+	lv_obj_clear_flag(cancel_label, LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_add_event_cb(restart_cancel_button, restart_cancel_event,
+		LV_EVENT_CLICKED, NULL);
+	create_divider(restart_confirmation, 8, 25, 268, 2);
+
+	restart_slider = lv_obj_create(restart_confirmation);
+	lv_obj_set_pos(restart_slider, 8, 35);
+	lv_obj_set_size(restart_slider, 268, 32);
+	lv_obj_set_style_radius(restart_slider, 0, 0);
+	lv_obj_set_style_border_width(restart_slider, 2, 0);
+	lv_obj_set_style_border_color(restart_slider, colour(app_config.error_colour), 0);
+	lv_obj_set_style_bg_color(restart_slider, colour(app_config.background_colour), 0);
+	lv_obj_set_style_bg_opa(restart_slider, LV_OPA_COVER, 0);
+	lv_obj_set_style_pad_all(restart_slider, 0, 0);
+	lv_obj_clear_flag(restart_slider, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_add_flag(restart_slider, LV_OBJ_FLAG_CLICKABLE);
+	restart_slider_fill = lv_obj_create(restart_slider);
+	lv_obj_set_pos(restart_slider_fill, 0, 0);
+	lv_obj_set_size(restart_slider_fill, 28, 28);
+	lv_obj_set_style_radius(restart_slider_fill, 0, 0);
+	lv_obj_set_style_border_width(restart_slider_fill, 0, 0);
+	lv_obj_set_style_pad_all(restart_slider_fill, 0, 0);
+	lv_obj_set_style_bg_color(restart_slider_fill,
+		colour(app_config.error_colour), 0);
+	lv_obj_set_style_bg_opa(restart_slider_fill, LV_OPA_COVER, 0);
+	lv_obj_clear_flag(restart_slider_fill,
+		LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+	restart_slider_label = create_label(restart_slider,
+		translated("向右滑动重启", "SLIDE RIGHT TO RESTART"), 0, 0,
+		small_ui_font(), app_config.primary_colour);
+	lv_obj_center(restart_slider_label);
+	lv_obj_clear_flag(restart_slider_label, LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_add_event_cb(restart_slider, restart_slider_event, LV_EVENT_ALL, NULL);
+	set_page_visible(restart_confirmation, false);
+	return panel;
+}
+
+static void global_touch_poll(lv_timer_t *timer)
+{
+	(void)timer;
+	if (!touch_input)
+		return;
+	lv_indev_state_t state = lv_indev_get_state(touch_input);
+	if (state != LV_INDEV_STATE_PRESSED) {
+		global_touch_pressed = false;
+		global_touch_consumed = false;
+		return;
+	}
+	lv_point_t point;
+	lv_indev_get_point(touch_input, &point);
+	if (!global_touch_pressed) {
+		global_touch_pressed = true;
+		global_touch_start = point;
+		if (manual_screen_off) {
+			manual_screen_off = false;
+			if (main_display)
+				lv_display_trigger_activity(main_display);
+			set_backlight(true);
+			global_touch_consumed = true;
+			lv_indev_wait_release(touch_input);
+		}
+		return;
+	}
+	if (global_touch_consumed || reset_overlay_active)
+		return;
+	int32_t horizontal = point.x - global_touch_start.x;
+	int32_t vertical = point.y - global_touch_start.y;
+	if (!quick_menu_visible && vertical >= QUICK_MENU_SWIPE_PX &&
+	    vertical > abs(horizontal)) {
+		open_quick_menu();
+		global_touch_consumed = true;
+		lv_indev_reset_long_press(touch_input);
+		lv_indev_wait_release(touch_input);
+	} else if (quick_menu_visible && !restart_confirmation_visible &&
+		   vertical <= -QUICK_MENU_SWIPE_PX &&
+		   -vertical > abs(horizontal)) {
+		close_quick_menu_animated();
+		global_touch_consumed = true;
+		lv_indev_reset_long_press(touch_input);
+		lv_indev_wait_release(touch_input);
+	}
 }
 
 enum reset_marker_state {
@@ -1504,6 +1893,30 @@ static enum reset_marker_state read_reset_button_state(uint32_t *held_ms,
 	return RESET_MARKER_NONE;
 }
 
+static void update_reset_release_action(unsigned int stage, bool cancelled)
+{
+	if (stage >= RESET_STAGE_COUNT || !reset_stage_status_labels[stage])
+		return;
+	const char *text;
+	unsigned int text_colour;
+	if (cancelled || stage == 0) {
+		text = translated("取消", "CANCEL");
+		text_colour = app_config.error_colour;
+	} else if (stage == 1) {
+		text = translated("网络", "NETWORK");
+		text_colour = app_config.accent_colour;
+	} else {
+		text = translated("出厂", "FACTORY");
+		text_colour = app_config.warning_colour;
+	}
+	set_label_text_if_changed(reset_stage_status_labels[stage], text);
+	lv_obj_set_style_text_color(reset_stage_status_labels[stage],
+		colour(text_colour), 0);
+	if (reset_stage_progress[stage])
+		lv_obj_set_style_bg_color(reset_stage_progress[stage],
+			colour(text_colour), 0);
+}
+
 static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
 {
 	uint32_t start = stage == 0 ? 0U : stage == 1 ? RESET_NETWORK_MS : RESET_FACTORY_MS;
@@ -1519,6 +1932,7 @@ static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
 		reset_last_remaining = UINT32_MAX;
 	}
 	if (remaining != reset_last_remaining || cancelled != reset_cancelled) {
+		update_reset_release_action(stage, cancelled);
 		char detail[96];
 		if (stage == 0) {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
@@ -1559,8 +1973,8 @@ static void show_reset_stage(unsigned int stage, uint32_t elapsed_ms)
 static void show_reset_release_confirmation(uint32_t held_ms, uint32_t elapsed_ms)
 {
 	bool cancelled = held_ms < RESET_NETWORK_MS || held_ms >= RESET_CANCEL_MS;
-	unsigned int stage = cancelled ? 2U :
-		held_ms < RESET_FACTORY_MS ? 0U : 1U;
+	unsigned int stage = cancelled ? 0U :
+		held_ms < RESET_FACTORY_MS ? 1U : 2U;
 	if (stage != reset_visible_stage) {
 		for (unsigned int index = 0; index < RESET_STAGE_COUNT; ++index)
 			set_page_visible(reset_stage_pages[index], index == stage);
@@ -1570,13 +1984,14 @@ static void show_reset_release_confirmation(uint32_t held_ms, uint32_t elapsed_m
 	unsigned int remaining = elapsed_ms < RESET_CONFIRM_MS ?
 		(unsigned int)((RESET_CONFIRM_MS - elapsed_ms + 999U) / 1000U) : 0U;
 	if (remaining != reset_last_remaining || !reset_cancelled) {
+		update_reset_release_action(stage, cancelled);
 		char detail[96];
 		if (cancelled) {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
 				translated("操作已取消", "RESET CANCELLED"));
 			snprintf(detail, sizeof(detail),
 				translated("%u 秒后返回", "RETURNING IN %us"), remaining);
-		} else if (stage == 0U) {
+		} else if (stage == 1U) {
 			set_label_text_if_changed(reset_stage_main_labels[stage],
 				translated("正在重置网络", "RESETTING NETWORK"));
 			snprintf(detail, sizeof(detail), "%s",
@@ -1602,6 +2017,7 @@ static void open_reset_overlay(void)
 {
 	if (reset_overlay_active)
 		return;
+	close_quick_menu_immediately();
 	reset_overlay_active = true;
 	lv_anim_delete(dashboard_screen, NULL);
 	page_animation_running = false;
@@ -2034,10 +2450,23 @@ static void apply_openclash_toggle_request(void)
 	pthread_mutex_unlock(&openclash_toggle_mutex);
 }
 
+static void apply_device_action_request(void)
+{
+	pthread_mutex_lock(&device_action_mutex);
+	bool should_reboot = reboot_requested;
+	reboot_requested = false;
+	pthread_mutex_unlock(&device_action_mutex);
+	if (!should_reboot)
+		return;
+	const char *const reboot_command[] = { "/sbin/reboot", NULL };
+	safe_exec_quiet(reboot_command);
+}
+
 static void *system_worker(void *unused)
 {
 	(void)unused;
 	while (running) {
+		apply_device_action_request();
 		apply_openclash_toggle_request();
 		struct system_snapshot snapshot;
 		system_info_sample(&system_state, &snapshot);
@@ -2065,6 +2494,7 @@ static void build_ui(void)
 	wifi_qr_screen = build_wifi_qr_screen();
 	openclash_screen = build_openclash_screen(dashboard_screen);
 	reset_screen = build_reset_screen();
+	quick_menu_panel = build_quick_menu();
 	screens_by_page[SCREENPLUS_PAGE_HOME] = clock_screen;
 	screens_by_page[SCREENPLUS_PAGE_STATUS] = status_screen;
 	screens_by_page[SCREENPLUS_PAGE_TRAFFIC] = traffic_screen;
@@ -2115,6 +2545,8 @@ static void build_ui(void)
 	lv_timer_create(apply_system_snapshot, 500, NULL);
 	lv_timer_create(manage_idle_state, 250, NULL);
 	lv_timer_create(update_reset_button, 50, NULL);
+	if (touch_input)
+		lv_timer_create(global_touch_poll, TOUCH_READ_PERIOD_MS, NULL);
 	if (app_config.auto_carousel)
 		lv_timer_create(auto_carousel, app_config.carousel_interval_seconds * 1000U, NULL);
 	update_clock(NULL);
@@ -2402,6 +2834,7 @@ int main(int argc, char **argv)
 		lv_evdev_set_swap_axes(touch, false);
 		lv_evdev_set_calibration(touch, 0, 0, 75, 283);
 		lv_indev_set_display(touch, display);
+		touch_input = touch;
 		/* Keep touch sampling independent from the framebuffer cadence.
 		 * The display consumes the newest position on each frame while a 10 ms
 		 * input timer reduces finger-to-frame latency and coalesces intermediate

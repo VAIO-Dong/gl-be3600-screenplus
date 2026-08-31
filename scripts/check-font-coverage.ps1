@@ -25,12 +25,15 @@ if ($missing) {
     exit 1
 }
 
-$resetSection = [regex]::Match($applicationSource,
-    '(?s)static lv_obj_t \*create_reset_stage_page.*?static void open_reset_overlay')
-if (-not $resetSection.Success) {
+$resetBuildSection = [regex]::Match($applicationSource,
+    '(?s)static lv_obj_t \*create_reset_stage_page.*?static lv_obj_t \*build_reset_screen.*?\r?\n\}')
+$resetStatusSection = [regex]::Match($applicationSource,
+    '(?s)static void show_reset_stage.*?static void open_reset_overlay')
+if (-not $resetBuildSection.Success -or -not $resetStatusSection.Success) {
     throw 'Reset interface source section was not found.'
 }
-$resetMissing = [regex]::Matches($resetSection.Value, '[^\u0000-\u007f]') |
+$resetSource = $resetBuildSection.Value + $resetStatusSection.Value
+$resetMissing = [regex]::Matches($resetSource, '[^\u0000-\u007f]') |
     ForEach-Object Value |
     Sort-Object -Unique |
     Where-Object {

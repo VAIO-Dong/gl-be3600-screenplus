@@ -211,6 +211,46 @@ resource names together as described below.
 - The OpenClash switch does not bubble pointer or gesture events. Its clickable
   object is exactly the visible 36 x 19 switch at the top right.
 
+## Global quick menu
+
+The quick menu is recognised from the input device rather than page-event
+bubbling, so a downward swipe must open it from every page and from controls
+that normally own pointer events. In particular, start a downward swipe on the
+visible OpenClash switch and confirm that the menu opens without toggling
+OpenClash. Test both 90- and 270-degree orientations. An upward swipe on the
+action page must close the menu.
+
+Tapping Restart opens a separate confirmation page. A tap, a drag that starts
+outside the left 56 pixels of the slider, and a drag shorter than 190 pixels
+must all return the slider to its initial state without rebooting. Do not cross
+the confirmation threshold on a test device unless an actual reboot has been
+explicitly authorised. Tapping Cancel returns to the action page.
+
+Tapping Screen off must immediately write zero to the backlight. The next
+touch only wakes the display to its configured brightness; it must not activate
+the control beneath that touch or reopen the menu.
+
+## Theme colour discipline
+
+New interface elements must first reuse the existing configurable theme roles:
+background, primary text, secondary text, accent, divider and status colours.
+Do not add a new fixed or configurable colour unless none of those roles can
+express a necessary state. Decorative controls must continue to follow theme
+changes instead of introducing an isolated colour system.
+
+## Compact action-page layout
+
+Full-screen confirmations and hardware-action overlays use one shared visual
+structure: the top-left label states the prompt, the top-right label shows
+Cancel or the action that would occur now, a theme-coloured divider separates
+the header, and all details and controls stay below it. New overlays should
+follow this structure unless their interaction cannot fit it cleanly.
+
+For the Reset-button overlay, the top-right status always describes what
+releasing the button at that moment will do. It must show Cancel before three
+seconds, Network from three to eight seconds, Factory from eight to twenty
+seconds, and Cancel after twenty seconds. It must not preview the next stage.
+
 ## Device lifecycle and transport
 
 - OpenWrt on the test device has no SFTP server; use scp -O for legacy SCP.
@@ -292,6 +332,14 @@ route, and green when the route is available. Both Ethernet ports are plain
 ports in diagnostics and must not be labelled WAN or LAN. Switching back to
 router mode must restore the normal four uplink labels and separate WAN/LAN
 rows without changing the ScreenPlus page configuration.
+
+The native Toggle frontend has a separate access-point-mode allowlist. Merely
+installing `/etc/gl-switch.d/screenplus.sh` is not sufficient: verify that the
+patched frontend admits `screenplus` in both its AP label and function filters.
+In AP mode, reload the Toggle settings after installation and confirm that
+ScreenPlus appears in the list and can still switch between ScreenPlus and the
+official display service. A stale browser copy of the native frontend may need
+a hard reload before this check.
 
 ## Reset-button overlay
 

@@ -5,10 +5,6 @@ local file = assert(io.open(path, "rb"))
 local source = file:read("*a")
 file:close()
 
-if source:find('screenplus:"ScreenPlus"', 1, true) then
-	os.exit(0)
-end
-
 local replacements = {
 	{
 		'guest_wifi:this.$t("btnsettings.guest_wifi")}}',
@@ -21,14 +17,24 @@ local replacements = {
 	{
 		'checkFuncStatus(){(function(t){return s("call",["sid","switch-button","check_sync_status",t])})(this.funcParams).then((t=>{t&&t.err_msg||(0===t.sync_status?this.showTips=!0:this.setBtnConfig())}))}',
 		'checkFuncStatus(){this.func.includes("screenplus")?this.setBtnConfig(!0):(function(t){return s("call",["sid","switch-button","check_sync_status",t])})(this.funcParams).then((t=>{t&&t.err_msg||(0===t.sync_status?this.showTips=!0:this.setBtnConfig())}))}'
+	},
+	{
+		'return["main_wifi","led"].includes(n)?this.labelMap[n]:""',
+		'return["main_wifi","led","screenplus"].includes(n)?this.labelMap[n]:""'
+	},
+	{
+		'else if(["wifi","led"].includes(e.func)&&',
+		'else if(["wifi","led","screenplus"].includes(e.func)&&'
 	}
 }
 
 for _, replacement in ipairs(replacements) do
-	local first, last = source:find(replacement[1], 1, true)
-	assert(first, "unsupported GL Toggle frontend")
-	assert(not source:find(replacement[1], last + 1, true), "ambiguous GL Toggle frontend")
-	source = source:sub(1, first - 1) .. replacement[2] .. source:sub(last + 1)
+	if not source:find(replacement[2], 1, true) then
+		local first, last = source:find(replacement[1], 1, true)
+		assert(first, "unsupported GL Toggle frontend")
+		assert(not source:find(replacement[1], last + 1, true), "ambiguous GL Toggle frontend")
+		source = source:sub(1, first - 1) .. replacement[2] .. source:sub(last + 1)
+	end
 end
 
 local output = assert(io.open(path, "wb"))
