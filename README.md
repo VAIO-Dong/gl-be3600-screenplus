@@ -3,7 +3,7 @@
 ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。速率显示与硬件加速不冲突，同时还支持屏幕翻转，壁挂安装时也能正常操作。
 
 <p align="center">
-  <img src="docs/images/home.png" width="568" alt="ScreenPlus 首页">
+  <img src="docs/images/home.png" width="284" alt="ScreenPlus 首页">
 </p>
 
 ## 页面一览
@@ -13,7 +13,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 ### 首页
 
 <p align="center">
-  <img src="docs/images/home.png" width="568" alt="首页时间和日期">
+  <img src="docs/images/home.png" width="284" alt="首页时间和日期">
 </p>
 
 只保留时间、日期和星期，简单干净。可以选择显示秒、时区。
@@ -21,7 +21,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 ### 实时速率
 
 <p align="center">
-  <img src="docs/images/traffic.png" width="568" alt="实时网络速率和连接数">
+  <img src="docs/images/traffic.png" width="284" alt="实时网络速率和连接数">
 </p>
 
 固定位置显示上行、下行和实时连接数，右侧是最近 30 秒的流量趋势。
@@ -29,7 +29,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 ### 系统状态
 
 <p align="center">
-  <img src="docs/images/status.png" width="568" alt="CPU 内存温度和风扇状态">
+  <img src="docs/images/status.png" width="284" alt="CPU 内存温度和风扇状态">
 </p>
 
 显示 CPU 占用与温度、内存占用与已用空间，以及风扇转速。
@@ -41,7 +41,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 ### 网络连接
 
 <p align="center">
-  <img src="docs/images/network.png" width="568" alt="WAN LAN 和四种联网方式">
+  <img src="docs/images/network.png" width="284" alt="WAN LAN 和四种联网方式">
 </p>
 
 页面会同时展示四种 WAN 来源的状态：
@@ -58,7 +58,7 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 ### OpenClash
 
 <p align="center">
-  <img src="docs/images/openclash.png" width="568" alt="OpenClash 状态和实时信息">
+  <img src="docs/images/openclash.png" width="284" alt="OpenClash 状态和实时信息">
 </p>
 
 显示 OpenClash 状态、实时上下行速率、累计流量、连接数、CPU 和内存占用。右上角可以直接开关 OpenClash。
