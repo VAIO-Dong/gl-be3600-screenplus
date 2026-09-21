@@ -93,7 +93,7 @@ static int ubus_interface_value(const char *interface, const char *path,
 		return -1;
 	char command[512];
 	snprintf(command, sizeof(command),
-		"/bin/ubus call network.interface.%s status 2>/dev/null | "
+		"/bin/ubus -t 2 call network.interface.%s status 2>/dev/null | "
 		"/usr/bin/jsonfilter -e '%s' 2>/dev/null", interface, path);
 	return run_line(command, buffer, size);
 }
@@ -147,15 +147,19 @@ static void find_default_interface(char *interface, unsigned int size)
 	fclose(file);
 }
 
+static int device_carrier(const char *device);
+
 static void sample_interface(const char *name, const char *active_interface,
 			     struct uplink_info *uplink)
 {
 	char up[16] = {0};
 	char available[16] = {0};
+	char autostart[16] = {0};
 	char device[SCREENPLUS_TEXT_SHORT] = {0};
 	strncpy(uplink->logical_interface, name, sizeof(uplink->logical_interface) - 1);
 	if (ubus_interface_value(name, "@.up", up, sizeof(up)) != 0) {
 		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, "UNKNOWN");
 		return;
 	}
 	ubus_interface_value(name, "@.available", available, sizeof(available));
@@ -174,11 +178,22 @@ static void sample_interface(const char *name, const char *active_interface,
 		snprintf(uplink->detail, sizeof(uplink->detail), "%s",
 			uplink->ipv4[0] ? uplink->ipv4 : (device[0] ? device : "UP"));
 	} else if (strcmp(available, "true") == 0) {
+		ubus_interface_value(name, "@.autostart", autostart, sizeof(autostart));
+		if (strcmp(autostart, "false") == 0) {
+			uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+			strcpy(uplink->detail, "OFF");
+			return;
+		}
+		if (device[0] && device_carrier(device) == 0) {
+			uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+			strcpy(uplink->detail, "NO LINK");
+			return;
+		}
 		uplink->state = SCREENPLUS_STATE_CONNECTING;
 		strcpy(uplink->detail, "WAIT");
 	} else {
-		uplink->state = SCREENPLUS_STATE_IDLE;
-		strcpy(uplink->detail, "IDLE");
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, "NO DEVICE");
 	}
 }
 
@@ -209,11 +224,10 @@ static int ethernet_carrier(const struct uplink_info *uplink)
 	return device_carrier(device);
 }
 
-static void sample_ethernet(const char *active_interface, struct uplink_info *uplink)
+static void sample_ethernet_interface(const char *name, const char *active_interface,
+				      struct uplink_info *uplink)
 {
-	sample_interface("wan", active_interface, uplink);
-	if (uplink->state == SCREENPLUS_STATE_UNAVAILABLE)
-		sample_interface("secondwan", active_interface, uplink);
+	sample_interface(name, active_interface, uplink);
 	int carrier = ethernet_carrier(uplink);
 	if (carrier == 0) {
 		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
@@ -222,10 +236,22 @@ static void sample_ethernet(const char *active_interface, struct uplink_info *up
 		uplink->dns[0] = '\0';
 		strcpy(uplink->detail, "NO CABLE");
 	} else if (carrier == 1 && uplink->state != SCREENPLUS_STATE_ACTIVE &&
-		   uplink->state != SCREENPLUS_STATE_CONNECTED) {
+		   uplink->state != SCREENPLUS_STATE_CONNECTED &&
+		   strcmp(uplink->detail, "OFF") != 0 &&
+		   strcmp(uplink->detail, "UNKNOWN") != 0) {
 		uplink->state = SCREENPLUS_STATE_CONNECTING;
 		strcpy(uplink->detail, "NO INTERNET");
 	}
+}
+
+static void sample_ethernet(const char *active_interface, struct uplink_info *uplink)
+{
+	struct uplink_info second = {0};
+	sample_ethernet_interface("wan", active_interface, uplink);
+	sample_ethernet_interface("secondwan", active_interface, &second);
+	/* Prefer the actual default exit, then a connected or connecting port. */
+	if (second.state > uplink->state)
+		*uplink = second;
 }
 
 static void sample_access_point_ethernet(const char *active_interface,
@@ -253,22 +279,77 @@ static void sample_access_point_ethernet(const char *active_interface,
 	}
 }
 
-static void sample_repeater(const char *active_interface, struct uplink_info *uplink)
+/* False means insufficient evidence, not a disconnected repeater. */
+static bool sample_repeater(const char *active_interface, struct uplink_info *uplink)
 {
 	char running[16] = {0};
-	if (run_line("/bin/ubus call repeater status 2>/dev/null | "
+	char up[16] = {0};
+	char available[16] = {0};
+	char pending[16] = {0};
+	char autostart[16] = {0};
+	run_line("/bin/ubus -t 2 call repeater status 2>/dev/null | "
 		     "/usr/bin/jsonfilter -e '@.running' 2>/dev/null",
-		     running, sizeof(running)) == 0 && strcmp(running, "true") != 0) {
-		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
-		return;
+		     running, sizeof(running));
+	ubus_interface_value("wwan", "@.up", up, sizeof(up));
+	strcpy(uplink->logical_interface, "wwan");
+	/* An operational interface is stronger evidence than daemon idle state. */
+	if (strcmp(up, "true") == 0) {
+		sample_interface("wwan", active_interface, uplink);
+		return uplink->state == SCREENPLUS_STATE_ACTIVE ||
+			uplink->state == SCREENPLUS_STATE_CONNECTED;
 	}
+	ubus_interface_value("wwan", "@.pending", pending, sizeof(pending));
+	ubus_interface_value("wwan", "@.available", available, sizeof(available));
+	if (strcmp(up, "false") == 0 && strcmp(available, "false") == 0) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, "NO DEVICE");
+		return true;
+	}
+	if (strcmp(running, "true") == 0 || strcmp(pending, "true") == 0) {
+		if (strcmp(up, "false") != 0 || strcmp(available, "true") != 0)
+			return false;
+		sample_interface("wwan", active_interface, uplink);
+		return strcmp(uplink->detail, "UNKNOWN") != 0;
+	}
+	if (strcmp(running, "false") == 0) {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, "OFF");
+		return true;
+	}
+	if (strcmp(up, "false") != 0)
+		return false;
+	if (strcmp(available, "true") == 0) {
+		ubus_interface_value("wwan", "@.autostart", autostart, sizeof(autostart));
+		if (strcmp(autostart, "false") == 0 && strcmp(pending, "false") == 0) {
+			uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+			strcpy(uplink->detail, "OFF");
+			return true;
+		}
+		if (strcmp(autostart, "true") == 0) {
+			sample_interface("wwan", active_interface, uplink);
+			return strcmp(uplink->detail, "UNKNOWN") != 0;
+		}
+	}
+	return false;
+}
 
-	sample_interface("wwan", active_interface, uplink);
-	if (strcmp(running, "true") == 0 &&
-	    (uplink->state == SCREENPLUS_STATE_UNAVAILABLE ||
-	     uplink->state == SCREENPLUS_STATE_IDLE)) {
-		uplink->state = SCREENPLUS_STATE_CONNECTING;
-		strcpy(uplink->detail, "WAIT");
+static void sample_repeater_cached(struct system_info_state *state,
+				   const char *active_interface, uint64_t now,
+				   struct uplink_info *uplink)
+{
+	memset(uplink, 0, sizeof(*uplink));
+	if (sample_repeater(active_interface, uplink)) {
+		state->last_repeater = *uplink;
+		state->repeater_sampled_milliseconds = now;
+	} else if (state->repeater_sampled_milliseconds &&
+		   now >= state->repeater_sampled_milliseconds &&
+		   now - state->repeater_sampled_milliseconds <= 15000U) {
+		/* Tolerate transient reads, but never show an old connection forever. */
+		*uplink = state->last_repeater;
+	} else {
+		memset(uplink, 0, sizeof(*uplink));
+		strcpy(uplink->logical_interface, "wwan");
+		strcpy(uplink->detail, "UNKNOWN");
 	}
 }
 
@@ -283,6 +364,86 @@ static void sample_cellular(const char *active_interface, struct uplink_info *up
 	if (run_line("/bin/ubus list 'network.interface.modem_*' 2>/dev/null | head -n 1",
 		     object, sizeof(object)) == 0 && strncmp(object, "network.interface.", 18) == 0) {
 		sample_interface(object + 18, active_interface, uplink);
+	}
+}
+
+/* This is the same read-only interface used by GL's gl.kmwan.get_ifstatus.
+ * A successfully read table without this member means offline. Unknown
+ * formats and I/O failures must not be mistaken for a health verdict. */
+static int parse_kmwan_health(FILE *file, const char *interface)
+{
+	if (!file || !interface[0])
+		return -1;
+	char line[160];
+	while (fgets(line, sizeof(line), file)) {
+		char name[SCREENPLUS_TEXT_SHORT], status[32], extra;
+		if (sscanf(line, "%31[^:]:%31s %c", name, status, &extra) != 2)
+			return -1;
+		if (strcmp(name, interface) == 0) {
+			if (strcmp(status, "online") == 0)
+				return 1;
+			if (strcmp(status, "offline") == 0)
+				return 0;
+			return -1;
+		}
+	}
+	return ferror(file) ? -1 : 0;
+}
+
+static void apply_uplink_health(struct uplink_health_cache *cache,
+				struct uplink_info *uplink, int online,
+				bool balance, uint64_t now)
+{
+	if (uplink->state != SCREENPLUS_STATE_ACTIVE &&
+	    uplink->state != SCREENPLUS_STATE_CONNECTED) {
+		memset(cache, 0, sizeof(*cache));
+		return;
+	}
+	if (online >= 0) {
+		cache->online = online;
+		cache->sampled_milliseconds = now;
+		snprintf(cache->logical_interface, sizeof(cache->logical_interface),
+			 "%s", uplink->logical_interface);
+		snprintf(cache->device, sizeof(cache->device), "%s", uplink->device);
+	} else if (cache->sampled_milliseconds && now >= cache->sampled_milliseconds &&
+		   now - cache->sampled_milliseconds <= 15000U &&
+		   strcmp(cache->logical_interface, uplink->logical_interface) == 0 &&
+		   strcmp(cache->device, uplink->device) == 0) {
+		online = cache->online;
+	}
+	if (online == 1) {
+		/* ACTIVE initially means selected by the default route. In balance
+		 * mode every healthy participating uplink is an active exit. */
+		if (balance)
+			uplink->state = SCREENPLUS_STATE_ACTIVE;
+	} else if (online == 0) {
+		uplink->state = SCREENPLUS_STATE_CONNECTING;
+		strcpy(uplink->detail, "NO INTERNET");
+	} else {
+		uplink->state = SCREENPLUS_STATE_UNAVAILABLE;
+		strcpy(uplink->detail, "UNKNOWN");
+	}
+}
+
+static void sample_uplink_health(struct system_info_state *state,
+				 struct system_snapshot *snapshot, uint64_t now)
+{
+	char enabled[16] = {0}, mode[16] = {0};
+	uci_get("kmwan.global.enable", enabled, sizeof(enabled));
+	uci_get("kmwan.global.mode", mode, sizeof(mode));
+	bool monitor_enabled = strcmp(enabled, "1") == 0;
+	bool balance = monitor_enabled && strcmp(mode, "balance") == 0;
+	struct uplink_info *uplinks[] = {
+		&snapshot->ethernet, &snapshot->repeater,
+		&snapshot->tethering, &snapshot->cellular
+	};
+	for (unsigned int index = 0; index < 4; ++index) {
+		FILE *file = monitor_enabled ? fopen("/proc/gl-kmwan/config", "r") : NULL;
+		int online = parse_kmwan_health(file, uplinks[index]->logical_interface);
+		if (file)
+			fclose(file);
+		apply_uplink_health(&state->uplink_health[index], uplinks[index], online,
+				    balance, now);
 	}
 }
 
@@ -652,11 +813,14 @@ int system_info_sample(struct system_info_state *state, struct system_snapshot *
 	find_default_interface(active_interface, sizeof(active_interface));
 	if (snapshot->access_point_mode) {
 		sample_access_point_ethernet(active_interface, &snapshot->ethernet);
+		state->repeater_sampled_milliseconds = 0;
+		memset(state->uplink_health, 0, sizeof(state->uplink_health));
 	} else {
 		sample_ethernet(active_interface, &snapshot->ethernet);
-		sample_repeater(active_interface, &snapshot->repeater);
+		sample_repeater_cached(state, active_interface, now, &snapshot->repeater);
 		sample_tethering(active_interface, &snapshot->tethering);
 		sample_cellular(active_interface, &snapshot->cellular);
+		sample_uplink_health(state, snapshot, now);
 	}
 	sample_wifi_band("wifi2g", "wifi0", &snapshot->wifi_2g);
 	sample_wifi_band("wifi5g", "wifi1", &snapshot->wifi_5g);

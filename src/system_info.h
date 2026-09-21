@@ -82,7 +82,17 @@ struct system_snapshot {
 	char management_ipv4[SCREENPLUS_TEXT_SHORT];
 };
 
+struct uplink_health_cache {
+	char logical_interface[SCREENPLUS_TEXT_SHORT];
+	char device[SCREENPLUS_TEXT_SHORT];
+	int online;
+	uint64_t sampled_milliseconds;
+};
+
 struct system_info_state {
+	struct uplink_health_cache uplink_health[4];
+	struct uplink_info last_repeater;
+	uint64_t repeater_sampled_milliseconds;
 	uint64_t sampled_milliseconds;
 	uint64_t port_receive_bytes[2];
 	uint64_t port_transmit_bytes[2];

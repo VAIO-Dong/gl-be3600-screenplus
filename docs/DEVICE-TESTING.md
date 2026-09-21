@@ -300,6 +300,47 @@ enabled changes from `1` to `0` should show the wrapper plus `gl_screen`, and a
 change back to `1` should leave only `/usr/sbin/screenplus`. This stable entry
 point is what lets normal configuration changes retain the current page.
 
+## Uplink state and colour consistency
+
+Run `scripts/test-repeater-state.ps1` for host-side regression tests of the
+production samplers and UI colour mapping with simulated ubus fields, including
+the old `running` format, missing fields, and transient query failures. The
+matrix covers Ethernet, Repeater, USB Tethering and Cellular in both failover
+and balance modes.
+
+On firmware reporting `state_s=idle` without `running`, check netifd's `wwan`
+`up`, `available`, and `pending` fields. A down, unavailable, non-pending
+interface must use secondary text colour, not blue standby. Confirm the
+absence of a live STA with `iw dev` when testing this case; a configured but
+disabled STA section alone does not establish a present device. Do not infer
+other numeric repeater states from the idle case.
+
+An interface with autostart disabled and no connection uses secondary text
+colour, as does a device with no carrier. An operational interface takes
+precedence over daemon idle. Daemon `running=true` alone does not prove a link.
+Failed or incomplete reads retain the last confirmed snapshot for up to 15
+seconds, then fall back to unavailable with an internal `UNKNOWN` detail;
+confirmed disconnects take effect immediately. No network configuration change
+is needed to validate the disconnected case. Compare Ethernet before and after,
+and only test live association when doing so will not interrupt SSH access.
+
+In router mode, all four sources use the read-only `/proc/gl-kmwan/config`
+health table (`interface:online` or `interface:offline`), also used by the
+firmware's `gl.kmwan.get_ifstatus`. Missing members in a readable table are
+offline; an unreadable table or unknown status is not proof of no internet.
+Health read failures reuse a matching interface/device result for up to 15
+seconds, then show neutral unknown rather than falsely claiming connectivity.
+Firmware without this health interface likewise shows neutral unknown for
+connected uplinks whose internet health cannot be determined.
+
+An online default exit is green; an online secondary exit is blue. With
+`kmwan.global.enable=1` and `kmwan.global.mode=balance`, every online exit is
+green. An established link reported offline is yellow in either mode, even if
+it still owns a default route or IP address. Disabled and absent links are
+neutral regardless of stale health entries. Keep these rules identical for all
+four labels; do not infer internet access solely from a default route.
+AP mode retains its existing bridge-port display and route-based semantics.
+
 ## Access point mode
 
 GL firmware reports access point mode through `glconfig.general.mode=ap`. In

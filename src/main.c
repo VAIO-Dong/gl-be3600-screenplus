@@ -1026,9 +1026,8 @@ static unsigned int network_state_colour(enum screenplus_state state)
 {
 	switch (state) {
 	case SCREENPLUS_STATE_ACTIVE: return app_config.accent_colour;
-	case SCREENPLUS_STATE_IDLE: return app_config.standby_colour;
+	case SCREENPLUS_STATE_CONNECTED: return app_config.standby_colour;
 	case SCREENPLUS_STATE_CONNECTING:
-	case SCREENPLUS_STATE_CONNECTED:
 	case SCREENPLUS_STATE_ERROR: return app_config.warning_colour;
 	default: return app_config.secondary_colour;
 	}
