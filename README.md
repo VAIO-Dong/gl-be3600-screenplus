@@ -2,10 +2,6 @@
 
 ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务。直接接管设备自带的 284 × 76 彩色触摸屏，用更紧凑、更直观的方式展示路由器真正值得随手看一眼的信息：实时速率、连接数、设备状态、Wi-Fi、WAN/LAN 和 OpenClash。速率显示与硬件加速不冲突，同时还支持屏幕翻转，壁挂安装时也能正常操作。
 
-<p align="center">
-  <img src="docs/images/home.png" width="284" alt="ScreenPlus 首页">
-</p>
-
 ## 页面一览
 
 目前有六个页面，默认顺序是：首页、速率、系统状态、Wi-Fi、网络连接、OpenClash。页面可单独关闭，也可以在 LuCI 中调整顺序和显示字段。
@@ -36,6 +32,10 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
 
 ### Wi-Fi
 
+<p align="center">
+  <img src="docs/images/wifi.png" width="284" alt="Wi-Fi 状态和网络名称">
+</p>
+
 显示 2.4 GHz 和 5 GHz 的 SSID、开关状态与密码。密码支持隐藏、点击显示、始终显示和二维码模式。
 
 ### 网络连接
@@ -44,14 +44,12 @@ ScreenPlus 是为 GL.iNet GL-BE3600（Slate 7）做的一套开源屏幕服务�
   <img src="docs/images/network.png" width="284" alt="WAN LAN 和四种联网方式">
 </p>
 
-页面会同时展示四种 WAN 来源的状态：
+页面支持主备和负载均衡模式，同时展示四种 WAN 来源的连接与联网状态：
 
 - Ethernet
 - Wi-Fi Repeater
 - USB Tethering
 - Cellular
-
-四种来源使用相同的状态颜色：未启用或未连接使用次要文字色；已连接但无法上网显示黄色；可上网的备用出口显示蓝色，主出口显示绿色。负载均衡模式下，所有可上网的出口都显示绿色。
 
 路由模式下同时显示当前使用的 WAN 连接方式和 LAN IP。AP 模式会自动使用更适合桥接网络的页面布局，具体行为见下方说明。
 
